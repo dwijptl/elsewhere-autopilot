@@ -1,0 +1,113 @@
+name: Make Short
+
+on:
+  schedule:
+    # Thu / Sat / Sun at 06:00 UTC — the three Shorts fill the gap days after
+    # Wednesday's episode.
+    # 3 Shorts a week, from the episode's own assets. NEVER cross-posted to
+    # channel 1 (non-cannibalization rule, 90-day minimum).
+    - cron: "0 6 * * 4,6,0"
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Optional: force a specific topic (leave empty for auto)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: make-short
+  cancel-in-progress: false
+
+jobs:
+  make-short:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core fonts-noto-core
+
+      - name: Cache Kokoro TTS model (fallback voice, downloaded only if used)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/kokoro
+          key: kokoro-model-v1.0
+
+      - name: Set up Node (Remotion)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache Remotion node_modules
+        uses: actions/cache@v4
+        with:
+          path: remotion/node_modules
+          key: remotion-${{ hashFiles('remotion/package.json') }}
+
+      - name: Node dependencies (Remotion)
+        working-directory: remotion
+        run: npm install --no-audit --no-fund
+
+      - name: Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run shorts pipeline
+        id: pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
+          SARVAM_SPEAKER: ${{ secrets.SARVAM_SPEAKER }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FORCED_TOPIC: ${{ github.event.inputs.topic }}
+        run: python pipeline/run_short.py
+
+      - name: Publish release
+        if: ${{ always() && steps.pipeline.outputs.stamp != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAMP: ${{ steps.pipeline.outputs.stamp }}
+          OUTDIR: ${{ steps.pipeline.outputs.dir }}
+          VTITLE: ${{ steps.pipeline.outputs.title }}
+          DRAFT_RELEASE: ${{ steps.pipeline.outputs.draft_release }}
+        run: |
+          draft=()
+          title="SHORT $STAMP — $VTITLE"
+          if [ "$DRAFT_RELEASE" = "true" ]; then
+            draft=(--draft)
+            title="⚠️ REVIEW — $title"
+          fi
+          gh release create "short-$STAMP" \
+            "$OUTDIR/final.mp4" \
+            "$OUTDIR/captions.srt" \
+            "$OUTDIR/script.json" \
+            "$OUTDIR/run_summary.json" \
+            --title "$title" \
+            --notes-file "$OUTDIR/metadata.md" \
+            "${draft[@]}"
+
+      - name: Save topic history + asset usage log
+        if: ${{ always() && steps.pipeline.outputs.stamp != '' }}
+        run: |
+          git config user.name "faceless-autopilot"
+          git config user.email "actions@users.noreply.github.com"
+          git add topics_done_shorts.txt assets_used.json
+          git commit -m "log short (${{ steps.pipeline.outputs.stamp }})" || echo "nothing to commit"
+          git pull --rebase origin ${{ github.ref_name }} || true
+          git push

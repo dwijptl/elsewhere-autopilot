@@ -1,0 +1,141 @@
+{
+  "canon_version": 1,
+  "updated": "2026-07-13",
+  "_note": "The world bible. Every script is generated against this file and validated against it before TTS. Nothing enters canon without passing pipeline/canon.py validation. Dwij owns every taste decision here — the pipeline may PROPOSE additions (canon_additions in a script), it may never commit them unattended.",
+
+  "planet": {
+    "name": "Kelvara",
+    "name_status": "PROVISIONAL — Dwij vetoes or confirms before episode 1 publishes",
+    "name_rule": "The planet's name NEVER appears in a video title (config.format.planet_name_in_title=false). Titles sell the premise; the episode builds the IP. The name may be spoken inside the episode.",
+    "designation": "the fourth world of a quiet star",
+    "truth_label": "Original speculative documentary. The place is fictional; the principles are real."
+  },
+
+  "physics": {
+    "_note": "These constants are HARD. Every mechanism in every episode must be consistent with them. If a script needs a constant that isn't here, it must be added here first.",
+    "star": {
+      "type": "K-dwarf",
+      "colour": "amber-orange",
+      "luminosity_solar": 0.29,
+      "consequence": "Daylight is warm, low-angle and dim by Earth standards — roughly late-afternoon light at noon. This is WHY the palette is amber and WHY vision is an expensive sense here (see biology.sensory_bias)."
+    },
+    "gravity_g": 0.87,
+    "consequence_gravity": "Structures span further before they buckle; dust settles more slowly and stays airborne longer; humans and native fauna are taller and thinner-boned than Earth equivalents.",
+    "day_length_hours": 31.4,
+    "consequence_day": "Long, brutal afternoons. Thermal management — not cold — is the planet's defining engineering problem. This is the spine of the whole channel.",
+    "year_days": 388,
+    "moons": 1,
+    "moon_name": "Vell",
+    "atmosphere": {
+      "pressure_bar": 0.82,
+      "composition": "N2 74%, O2 19%, Ar 5%, CO2 0.3%, trace SO2 near volcanic provinces",
+      "consequence": "Breathable without assistance at low altitude. Thin enough that convective cooling is WEAK — radiators underperform Earth intuition by roughly a fifth. Every settlement's heat budget is tighter than it looks."
+    },
+    "water": "Liquid, abundant in one hemisphere, scarce in the other. The scarcity line is the planet's central political fact.",
+    "magnetosphere": "Weak. Surface radiation is survivable but not ignorable; long-lived settlements go underground or under water — which is why almost every settlement in this atlas is buried, sunken or shaded."
+  },
+
+  "atlas": {
+    "_note": "The map grows with the library. Every episode opens with a locator on this atlas — that continuity IS the returning-viewer glue. Regions are revealed, never retconned.",
+    "regions": [
+      {
+        "id": "REG-01",
+        "name": "The Cinder Shelf",
+        "type": "desert / basalt plateau",
+        "revealed_in": "EP-01",
+        "status": "revealed",
+        "description": "A basalt plateau under a permanently amber sky. Daytime surface temperatures climb through the long afternoon and do not fall until the 15-hour night. Dust here is fine, volcanic, and biologically active.",
+        "engineering_fact": "Nothing survives on the surface. Everything that lives here lives underneath it.",
+        "colour": "#C2762F"
+      },
+      {
+        "id": "REG-02",
+        "name": "The Slow Sea",
+        "type": "shallow ocean / continental shelf",
+        "revealed_in": "EP-01 (closing glimpse only)",
+        "status": "teased",
+        "description": "A warm, shallow, biologically dense sea on the water hemisphere. Its tides are not driven by Vell alone — something in the water anticipates them.",
+        "engineering_fact": "The sea is the planet's heat sink, its larder, and — as later episodes establish — arguably one organism.",
+        "colour": "#2F6F73",
+        "reserved_for": "The ecology episode 'This Ocean Is One Animal' — unlocks only AFTER six stress-test episodes (config.format.ecology_episode_unlocks_after)."
+      }
+    ],
+    "unrevealed_regions_hint": "Polar, equatorial dead zone, sky-plankton layer, the flooded shield — none of these may be referenced on screen until an episode reveals them."
+  },
+
+  "settlements": [
+    {
+      "id": "SET-01",
+      "name": "Tehlmark Deep",
+      "region": "REG-01",
+      "episode": "EP-01",
+      "founded": "year 41 of the survey calendar",
+      "population": 9400,
+      "premise": "A city cut vertically into basalt to escape a surface that cooks. Eleven levels, the deepest 340 metres down.",
+      "systems": {
+        "cooling": "PRIMARY SYSTEM — a closed groundwater loop pulls waste heat from every level and dumps it into an aquifer 500 m below the lowest gallery.",
+        "power": "Geothermal, tapped from the same basalt that traps the heat. Elegant, and a trap: the power source and the heat problem are the same rock.",
+        "air": "Passive stack ventilation driven by the day/night temperature swing at the surface shafts.",
+        "water": "The cooling aquifer is ALSO the drinking supply, filtered. This single shared dependency is the hidden fault.",
+        "food": "Fungal galleries on level 9, fed on surface dust organics."
+      },
+      "hidden_dependency": "Cooling, drinking water and power all terminate in one aquifer. Nobody drew that on the same diagram until it was too late.",
+      "verdict": "FAILED",
+      "verdict_reason": "A dust-borne organism (ORG-01) colonised the heat-exchanger surfaces, halved their conductivity over 60 days, and turned the city's own geothermal power into an oven it could not switch off.",
+      "status": "abandoned — sealed, not destroyed. Available for a future return episode."
+    }
+  ],
+
+  "organisms": [
+    {
+      "id": "ORG-01",
+      "name": "cinder film",
+      "common_name": "the film",
+      "region": "REG-01",
+      "introduced_in": "EP-01",
+      "biology": "A colonial chemolithotroph — a mineral-eating biofilm, not a plant or an animal. It metabolises iron and sulphur compounds in volcanic dust and it thrives in exactly the temperature band that heat exchangers operate in (45-70 C).",
+      "real_world_basis": "Earth analogue: Acidithiobacillus / Sulfolobus-type extremophile biofilms, and the industrial biofouling of heat exchangers, which is a real and expensive engineering problem on Earth.",
+      "visual_signature": "A matte, rust-black crust with a faint iridescent bloom where it is actively growing. It is never rendered as a monster and never given a face.",
+      "no_fixed_anatomy": true,
+      "_why": "Deliberate. Colonial/amorphous organisms carry ZERO cross-episode anatomy-continuity debt — the single hardest technical risk in an AI-rendered persistent world. Early episodes bias toward organisms with no fixed body plan.",
+      "seed": 40117
+    }
+  ],
+
+  "recurring_species_budget": {
+    "_note": "Continuity risk control. Recurring species are expensive to keep visually consistent, so they are rationed.",
+    "max_recurring_by_episode_10": 3,
+    "current_count": 1
+  },
+
+  "verdict_record": {
+    "_note": "The accumulating history of the world — the spine that makes the library compound. Also feeds the outcome-ratio tracker so the channel doesn't become collapse-monotony.",
+    "episodes": [
+      {
+        "episode": "EP-01",
+        "settlement": "SET-01",
+        "verdict": "FAILED",
+        "published": null
+      }
+    ],
+    "counts": {"SURVIVED": 0, "ADAPTED": 0, "FAILED": 1}
+  },
+
+  "art_bible_ref": "canon/art_bible.md",
+
+  "naming_rules": {
+    "settlements": "Hard consonants + a geographic noun: Tehlmark Deep, Corran Shaft, Ossul Reach. Never whimsical, never fantasy-elvish.",
+    "organisms": "Working-class descriptive names, the way field biologists actually name things: cinder film, glass grazer, the tide. Latin binomials never appear — this is a field report, not a taxonomy paper.",
+    "regions": "Plain English with one unsettling adjective: The Cinder Shelf, The Slow Sea.",
+    "forbidden": ["apostrophes in names", "unpronounceable clusters", "names that sound like a fantasy novel", "real-world place names", "real-world people"]
+  },
+
+  "hard_rules": [
+    "The place is fictional; the principles are real. Every mechanism must have a real-world analogue that a curious viewer can go and verify.",
+    "No real people, no real places, no real events, no religion, no politics.",
+    "Every episode is openly labelled speculative fiction in the first 10 seconds and in the description.",
+    "Nothing contradicts this file. If a script needs to bend canon, the script loses.",
+    "Viewer canon = votes on creator-designed options ONLY. Any submitted name or design requires explicit written permission and a licence before it enters this file.",
+    "The planet's name never appears in a video title."
+  ]
+}

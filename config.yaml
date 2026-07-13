@@ -1,0 +1,234 @@
+# ── Elsewhere Autopilot — channel 2 configuration ────────────────────
+# Format spine (non-negotiable, per docs/CHANNEL2_PLAN.md §APPROVED):
+#   Civilization Stress Test, set on ONE persistent living planet.
+#   Every episode: settlement's systems -> the biome shaping them ->
+#   one stress event -> SURVIVED / ADAPTED / FAILED.
+# Edit this file on GitHub (pencil icon) — no other setup needed.
+
+channel:
+  # The seed for ALL auto-generated episodes. The planet is the channel.
+  niche: >
+    Civilization stress tests on one persistent, original, openly-fictional
+    planet. Each episode documents a single settlement: the machine that
+    keeps it alive (water, heat, air, food, power), the biome that shaped
+    that machine, one stress event that tests a hidden dependency, and a
+    verdict — SURVIVED, ADAPTED or FAILED. The place is fictional; every
+    mechanism, material and organism obeys real physics, chemistry,
+    engineering and evolutionary biology. Hard rules: no real people, no
+    real places, no real history, no religion, no politics; nothing that
+    could be mistaken for a documentary about a real event. Continuity is
+    king — every settlement, organism and verdict is recorded in
+    canon/canon.json and future episodes must not contradict it.
+  tone: >
+    measured, warm, wonder-first English narration — documentary grammar,
+    an engineer's precision with a naturalist's affection; zero hype-speak,
+    zero "AI narrator" cadence
+  audience: "English-speaking adults who love systems, maps, worldbuilding and hard science fiction"
+  language: "en-us"        # BCP-47; drives script language + TTS engine.
+  wpm: 150                 # English documentary narration ~150 wpm
+
+  # Correction 1 (approved): ONE continuity, not a hard one-planet rule.
+  # Season 1 is one planet + one atlas; moons, orbital habitats and other
+  # worlds may join later without breaking the channel.
+  continuity: "one atlas, one timeline, one physics — the planet is season 1"
+
+  # Correction 3 (approved): viewer canon = votes on creator-designed
+  # options only. Submitted names/designs need explicit permission + licence
+  # before entering owned IP.
+  viewer_canon: "polls_on_creator_options_only"
+
+  # The opening truth label, spoken/shown on every episode.
+  truth_label: "Original speculative documentary. The place is fictional; the principles are real."
+
+format:
+  spine: "civilization_stress_test"
+  verdicts: ["SURVIVED", "ADAPTED", "FAILED"]
+  # Correction 2 (approved): the FIRST SIX videos all use the stress-test
+  # format. Ecology appears inside those cases as threat / resource /
+  # solution. "This Ocean Is One Animal" (the ecology episode) only runs
+  # after the promise is established.
+  ecology_episode_unlocks_after: 6
+  # Don't let everything FAIL — the outcome tracker keeps the verdict mix
+  # honest and the series legible (see pipeline/canon.py).
+  outcome_ratio_target: {SURVIVED: 0.3, ADAPTED: 0.4, FAILED: 0.3}
+  outcome_ratio_window: 6   # look back this many episodes when steering
+  # Planet name never appears in a title. Titles sell the premise; the
+  # episode builds the IP.
+  planet_name_in_title: false
+
+video:
+  target_minutes: 6.5      # 6-7 min; word budget enforced pre-TTS
+  scenes_min: 9
+  scenes_max: 12
+  width: 1920
+  height: 1080
+  fps: 30
+  bitrate: "6000k"
+  crossfade: 0.4
+  max_shot_seconds: 5
+  outro_seconds: 4
+
+longform_quality:
+  visual_beats:
+    enabled: true
+    hook_max_seconds: 3.8
+    max_seconds: 5.0
+    min_per_scene: 2
+    max_per_scene: 12
+  dynamic_music:
+    enabled: true
+    transition_seconds: 0.45
+    hook_factor: 0.72
+    calm_factor: 0.86
+    reveal_factor: 0.58
+    urgent_factor: 0.66
+  render_qc:
+    enabled: true
+    gate: false
+    min_semantic_coverage: 0.90
+    max_asset_uses: 2
+  overlay_seconds: 5.0
+
+tts:
+  engine: "elevenlabs"     # English narrator. Falls back to Kokoro (free,
+                           # offline) on any API failure so a run never dies.
+  elevenlabs_model: "eleven_multilingual_v2"
+  elevenlabs_voice: ""     # set the ELEVENLABS_VOICE_ID secret; this is only
+                           # a fallback if the secret is missing
+  stability: 0.42          # documentary steadiness (0-1; lower = more varied)
+  similarity: 0.80
+  style: 0.15              # keep low — hype-speak is a channel-killer
+  speaker_boost: true
+  temperature: 0.6
+  speed: 0.97
+  voice: "am_michael"      # Kokoro fallback voice (English)
+  fail_on_fallback: false  # PICK THE VOICE ONCE, NEVER CHANGE IT.
+
+llm:
+  provider: "auto"         # Claude when ANTHROPIC_API_KEY exists, else Gemini
+  anthropic_model: "claude-sonnet-5"
+  anthropic_fallback_models: ["claude-sonnet-4-5", "claude-haiku-4-5-20251001"]
+  model: "gemini-2.5-flash"
+  fallback_models: ["gemini-3-flash", "gemini-flash-latest", "gemini-2.0-flash"]
+  temperature: 0.85        # slightly tighter than channel 1 — canon must hold
+
+brand:
+  name: "ELSEWHERE"        # working name; final handle check pending
+  tagline: "Field documentaries from a world that never was."
+  watermark_opacity: 0.07
+
+render:
+  engine: "remotion"
+  # Non-cannibalization rule vs channel 1: different palette, different
+  # grammar. Channel 1 = glass/HUD/navy+amber. Channel 2 = matte archival
+  # engineering dossier: warm paper, amber system-flow lines, one red
+  # stress-line. NO glass, NO HUD.
+  accent: "#D98A3B"        # dossier amber (system flows)
+  stress: "#C43B2E"        # the red stress-line — used ONLY for the failure path
+  progress_bar: false      # channel 1's tell; dossier keeps the frame clean
+  style_pack: "dossier"    # fixed, not rotating — the world needs one look
+
+ai_images:
+  enabled: true
+  ai_first: true           # INVERSION vs channel 1: AI stills are the primary
+                           # visual source; stock is demoted to reference only
+                           # (a fictional planet has no stock footage)
+  stock_allowed: false     # true only for abstract texture beats
+  flux_model: "fal-ai/flux/dev"
+  flux_fallback: "fal-ai/flux/schnell"
+  max_per_video_flux: 16   # a 6-7 min episode is carried by 12-16 stills
+  max_per_video: 8         # Gemini free-tier fallback when no FAL_KEY
+  model: "gemini-2.5-flash-image"
+  fallback_models: ["gemini-3-flash-image", "gemini-2.0-flash-preview-image-generation"]
+  # Species/settlement visual continuity — the hardest technical problem in
+  # this concept. Fixed seeds + reference-image conditioning, and the pilot
+  # deliberately avoids fixed anatomy (see docs/PILOT.md).
+  seed_lock: true          # canon entities keep their seed across episodes
+  reference_conditioning: true
+  art_bible: "canon/art_bible.md"
+
+motion:                    # Wan / fal video shots — the expensive ingredient
+  enabled: true
+  max_per_video: 2         # $0.75-1.15 each; the pilot budget allows 1-2
+  model: "fal-ai/wan-i2v"
+  seconds: 5
+
+short:
+  target_seconds: 30
+  wpm: 150
+  scenes_min: 4
+  scenes_max: 6
+  crossfade: 0.25
+  max_shot_seconds: 2.4
+  overlay_seconds: 3.5
+  captions_max_chars: 24
+  caption_y: 0.62
+  music_volume: 0.18
+  loop_tail_seconds: 0.06
+  tts_speed: 1.0
+  ai_images_max: 2
+  ai_images_max_flux: 3
+  progress_bar: false
+  # Non-cannibalization: never share Shorts with channel 1 for 90 days.
+  cross_post_to_channel_1: false
+
+music:
+  volume: 0.12
+  fade: 1.5
+  auto_ambient: true
+
+audio_mastering:
+  enabled: true
+  target_lufs: -14.0
+  true_peak_db: -1.5
+  lra: 7.0
+
+sfx:
+  enabled: true
+  volume: 0.45             # restraint — this is a documentary, not a trailer
+
+qc:
+  visual_check: true       # Gemini vision checks every AI still against the
+                           # scene's must_show + the art bible
+  frames: 1                # stills, not clips
+  max_requests_per_video: 20
+
+atlas:
+  enabled: true            # the growing map of the planet — the returning-
+                           # viewer glue. Rendered from canon/canon.json, not
+                           # from a real-world map service.
+  reveal_new_regions: true
+  locator_every_episode: true
+
+motion_library:
+  enabled: true
+  cta_enabled: true
+  cta_in_shorts: false
+  cta_seconds: 3.2
+  cta_short_seconds: 1.8
+  cta_title: "Subscribe"
+  cta_subtitle: "A new field report every week"
+
+captions:
+  enabled: true
+  max_chars: 34
+  font_size: 54
+  align: true
+  align_window_seconds: 25
+
+canon_check:               # replaces channel 1's factcheck stage
+  enabled: true
+  gate: high_risk          # high_risk = a canon contradiction or a broken
+                           # real-science mechanism marks the release
+                           # DRAFT-DO-NOT-PUBLISH · true = any flag blocks ·
+                           # false = advisory only
+  max_claims: 12
+  # Two things get checked, and they are different:
+  #   1. CANON: does this script contradict canon/canon.json?
+  #   2. SCIENCE: is every mechanism physically plausible on the stated
+  #      planet (gravity, atmosphere, chemistry, biology, materials)?
+  check_canon: true
+  check_science: true
+  # The channel's credibility promise. A fictional place is fine.
+  # A fake mechanism is not.
+  science_sources_required: true
