@@ -51,7 +51,8 @@ Applied today, after the initial push:
    still+parallax; the run never dies). Motion shot replaces its source
    still in place so visual-beat bindings survive. 7 tests. The $5 pilot is
    now runnable end to end.
-2. **Planet name "Kelvara" is PROVISIONAL** — Dwij owns the decision.
+2. ~~Planet name "Kelvara" is PROVISIONAL~~ **CONFIRMED by Dwij 2026-07-13**
+   — Kelvara is canon.
 3. **Key rotation** for the previously exposed Gemini/Pexels keys — rotate,
    then update secrets in BOTH repos.
 4. `ELEVENLABS_*` secrets now optional (engine is Sarvam); harmless if set.

@@ -5,7 +5,7 @@
 
   "planet": {
     "name": "Kelvara",
-    "name_status": "PROVISIONAL — Dwij vetoes or confirms before episode 1 publishes",
+    "name_status": "CANON — confirmed by Dwij 2026-07-13",
     "name_rule": "The planet's name NEVER appears in a video title (config.format.planet_name_in_title=false). Titles sell the premise; the episode builds the IP. The name may be spoken inside the episode.",
     "designation": "the fourth world of a quiet star",
     "truth_label": "Original speculative documentary. The place is fictional; the principles are real."
