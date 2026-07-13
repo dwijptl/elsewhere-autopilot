@@ -19,6 +19,10 @@ on:
         description: "Optional: force a specific case (leave empty for auto)"
         required: false
         default: ""
+      script_file:
+        description: "Optional: repo path to a hand-written script JSON (skips the LLM writer)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -82,6 +86,7 @@ jobs:
           FAL_KEY: ${{ secrets.FAL_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           FORCED_TOPIC: ${{ github.event.inputs.topic }}
+          SCRIPT_FILE: ${{ github.event.inputs.script_file }}
         run: python pipeline/run.py
 
       - name: Publish release (your dated "folder")

@@ -301,10 +301,17 @@ def main() -> None:
     print(f"=== Faceless Autopilot run {stamp} · style: {style} ===")
 
     # 1) topic + script ------------------------------------------------------
-    topic = script_gen.pick_topic(cfg, gemini_key,
-                                  os.path.join(REPO_ROOT, "topics_done.txt"),
-                                  learnings)
-    script = script_gen.generate_script(cfg, topic, gemini_key, learnings)
+    script_file = os.environ.get("SCRIPT_FILE", "").strip()
+    if script_file:
+        # Hand-written episode: same gates, no LLM rewriting of the voice.
+        script = script_gen.load_script_file(
+            os.path.join(REPO_ROOT, script_file), cfg, gemini_key)
+        topic = script["topic"]
+    else:
+        topic = script_gen.pick_topic(cfg, gemini_key,
+                                      os.path.join(REPO_ROOT, "topics_done.txt"),
+                                      learnings)
+        script = script_gen.generate_script(cfg, topic, gemini_key, learnings)
     fact_report = canon_check.check_script(script, cfg, gemini_key, REPO_ROOT)
     # the pipeline may PROPOSE new canon; only Dwij canonises it
     canon_mod.propose(script, REPO_ROOT)

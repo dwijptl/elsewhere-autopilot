@@ -223,10 +223,19 @@ def validate(script: dict, canon: dict, cfg: dict) -> list[dict]:
                       f"its own episode. ({done}/{unlock} published.)",
         })
 
-    # A settlement name that already exists is a continuity error, not a callback.
+    # A settlement name that already exists is a continuity error, not a
+    # callback — UNLESS its canon entry belongs to an episode that has not
+    # published yet. Cases are designed in canon first; their debut episode
+    # is allowed to name them (e.g. SET-01 Tehlmark Deep debuting in EP-01).
+    unpublished = {str(e.get("episode", "")).lower()
+                   for e in canon.get("verdict_record", {}).get("episodes", [])
+                   if not e.get("published")}
+    debuting = {s["name"].lower() for s in canon.get("settlements", [])
+                if str(s.get("episode", "")).lower() in unpublished}
     existing = {s["name"].lower() for s in canon.get("settlements", [])}
     new_name = str(script.get("settlement", {}).get("name", "")).lower()
-    if new_name and new_name in existing and not script.get("is_return_episode"):
+    if (new_name and new_name in existing and new_name not in debuting
+            and not script.get("is_return_episode")):
         out.append({
             "severity": "low",
             "rule": "settlement_unique",

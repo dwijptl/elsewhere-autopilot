@@ -866,6 +866,33 @@ DRAFT:
     raise RuntimeError("Could not obtain a valid script after 3 attempts")
 
 
+def load_script_file(path: str, cfg: dict, api_key: str = "") -> dict:
+    """A hand-written episode (SCRIPT_FILE env). Same normalize boundary and
+    the same canon gate downstream — but NO LLM critique and NO expansion
+    pass. The entire point of a hand-written script is its voice; nothing in
+    this pipeline is allowed to rewrite a word of it. Visual-beat planning
+    still runs (it binds assets to narration; it does not touch narration).
+    """
+    with open(path, encoding="utf-8") as f:
+        raw = json.load(f)
+    script = _normalize(raw, 4)
+    script["topic"] = str(raw.get("topic") or script.get("title") or
+                          os.path.basename(path))
+    script["handwritten"] = True
+    wc = sum(len(str(sc.get("narration", "")).split()) for sc in script["scenes"])
+    target = int(cfg["video"]["target_minutes"] * _wpm(cfg))
+    if not (target * 0.85 <= wc <= target * 1.15):
+        print(f"[script] hand-written word count {wc} is outside "
+              f"{int(target * 0.85)}-{int(target * 1.15)} — proceeding; "
+              "the human owns the cut")
+    if api_key:
+        script = _plan_visual_beats(script, cfg, api_key)
+    modes = [s["visual_mode"] for s in script["scenes"]]
+    print(f"[script] HAND-WRITTEN '{script['title']}' — {len(modes)} scenes, "
+          f"{wc} words, modes: {modes}")
+    return script
+
+
 def generate_short_script(cfg: dict, topic: str, api_key: str,
                           learnings: str = "") -> dict:
     """Script for a vertical Short/Reel: one idea, ~25s, loop-friendly."""
