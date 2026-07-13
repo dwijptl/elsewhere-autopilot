@@ -154,9 +154,12 @@ ai_images:
 
 motion:                    # Wan / fal video shots — the expensive ingredient
   enabled: true
-  max_per_video: 2         # $0.75-1.15 each; the pilot budget allows 1-2
-  model: "fal-ai/wan-i2v"
-  seconds: 5
+  max_per_video: 2         # HARD cap; the pilot budget allows 1-2
+  model: "fal-ai/wan-i2v"  # Wan-2.1 image-to-video on fal (queue API)
+  seconds: 5               # 81 frames @ 16fps ≈ 5.06s (>81 frames bills 1.25x)
+  fps: 16
+  resolution: "720p"       # 720p = 1 billing unit/shot; 480p = 0.5
+  poll_timeout_seconds: 900
 
 short:
   target_seconds: 30

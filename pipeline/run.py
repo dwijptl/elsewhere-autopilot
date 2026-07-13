@@ -38,6 +38,7 @@ import sfx as sfx_mod               # noqa: E402
 import tts as tts_mod               # noqa: E402
 import visual_beats as visual_beats_mod  # noqa: E402
 import vision_qc                    # noqa: E402
+import wan_motion                   # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REMOTION_DIR = os.path.join(REPO_ROOT, "remotion")
@@ -424,6 +425,9 @@ def main() -> None:
     assets_mod.save_usage_log(log_path, usage_log)
     if hero_poses:
         _attach_hero(scenes, hero_poses)
+
+    # 3b) hero motion — Wan i2v animates 1-2 flagged stills; fail-open ------
+    wan_motion.animate_heroes(scenes, cfg, workdir)
 
     # 4) captions ------------------------------------------------------------
     events, srt = captions_mod.build_captions(scenes, cfg["captions"]["max_chars"])

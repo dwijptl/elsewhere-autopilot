@@ -44,9 +44,13 @@ Applied today, after the initial push:
 
 ## Known gaps (deliberate, tracked)
 
-1. **Wan motion stage not wired to fal** — `hero_motion` flags flow through
-   to the renderer, but no fal API call yet. The one real gap before the $5
-   pilot run.
+1. ~~Wan motion stage not wired to fal~~ **CLOSED 2026-07-13** —
+   `pipeline/wan_motion.py`: Wan-2.1 i2v via the fal queue API. Hard cap
+   `motion.max_per_video` (2), submit-all-then-poll, 81-frame billing floor,
+   canon seed reuse, and fail-open at every step (a failed shot leaves the
+   still+parallax; the run never dies). Motion shot replaces its source
+   still in place so visual-beat bindings survive. 7 tests. The $5 pilot is
+   now runnable end to end.
 2. **Planet name "Kelvara" is PROVISIONAL** — Dwij owns the decision.
 3. **Key rotation** for the previously exposed Gemini/Pexels keys — rotate,
    then update secrets in BOTH repos.
