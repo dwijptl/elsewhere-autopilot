@@ -117,6 +117,17 @@ def _chunks(text: str, limit: int = SARVAM_CHAR_LIMIT) -> list[str]:
 
 
 # ── Sarvam bulbul:v3 ─────────────────────────────────────────────────────
+def _sarvam_lang(code: str) -> str:
+    """Map channel language to a Sarvam-supported BCP-47 code.
+    Sarvam's enum only knows Indian-market codes: English is 'en-IN',
+    not 'en-us'/'en-US'. Anything already regionalised for India passes
+    through untouched."""
+    c = (code or "").strip()
+    if c.lower().startswith("en"):
+        return "en-IN"
+    return c or "hi-IN"
+
+
 def _sarvam_request(chunk: str, cfg: dict, api_key: str, speaker: str,
                     dlv: dict) -> np.ndarray:
     t = cfg["tts"]
@@ -124,7 +135,7 @@ def _sarvam_request(chunk: str, cfg: dict, api_key: str, speaker: str,
     pace = min(max(base, 0.5), 2.0)  # bulbul:v3 range
     body = {
         "text": chunk,
-        "target_language_code": cfg["channel"].get("language", "hi-IN"),
+        "target_language_code": _sarvam_lang(cfg["channel"].get("language", "hi-IN")),
         "model": t.get("sarvam_model", "bulbul:v3"),
         "speaker": speaker,
         "pace": round(pace, 3),
@@ -174,8 +185,10 @@ def _synth_sarvam(text: str, cfg: dict, dlv: dict) -> np.ndarray:
     api_key = os.environ.get("SARVAM_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("SARVAM_API_KEY not set (add it as a repo secret)")
+    # Sarvam speaker names are case-sensitive lowercase ('shubh', not 'Shubh')
+    # — normalise so a capitalised repo secret doesn't 422 every request.
     speaker = (os.environ.get("SARVAM_SPEAKER", "").strip()
-               or cfg["tts"].get("sarvam_speaker", "amit"))
+               or cfg["tts"].get("sarvam_speaker", "shubh")).lower()
     pieces = []
     for chunk in _chunks(text):
         pieces.append(_sarvam_request(chunk, cfg, api_key, speaker, dlv))

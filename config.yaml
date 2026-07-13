@@ -90,9 +90,14 @@ longform_quality:
   overlay_seconds: 5.0
 
 tts:
-  engine: "elevenlabs"     # English narrator. Falls back to Kokoro (free,
-                           # offline) on any API failure so a run never dies.
-  elevenlabs_model: "eleven_multilingual_v2"
+  engine: "sarvam"         # English narrator via Sarvam bulbul:v3 (decision:
+                           # 2026-07-13). Falls back to Kokoro (free, offline)
+                           # on any API failure so a run never dies.
+  sarvam_model: "bulbul:v3"
+  sarvam_speaker: "shubh"  # bulbul:v3 default voice; MUST be lowercase.
+                           # SARVAM_SPEAKER secret overrides this if set.
+                           # Language en-* is mapped to en-IN for Sarvam.
+  elevenlabs_model: "eleven_multilingual_v2"  # dormant alternative
   elevenlabs_voice: ""     # set the ELEVENLABS_VOICE_ID secret; this is only
                            # a fallback if the secret is missing
   stability: 0.42          # documentary steadiness (0-1; lower = more varied)
