@@ -269,6 +269,8 @@ def _qc_desc(scene: dict) -> str:
 
 def _stock_videos(scene, need_seconds, outdir, cfg, api_key, used, max_clips,
                   gemini_key=""):
+    if not (api_key or "").strip():
+        return [], 0.0  # stock disabled or key missing — don't fire doomed HTTP
     w = cfg["video"]["width"]
     assets, covered, qc_budget = [], 0.0, 6  # cap vision checks per scene
     desc = _qc_desc(scene)
@@ -356,6 +358,8 @@ def _stock_videos(scene, need_seconds, outdir, cfg, api_key, used, max_clips,
 
 def _stock_photo(scene, outdir, api_key, used, orientation="landscape",
                  cfg=None, gemini_key=""):
+    if not (api_key or "").strip():
+        return None  # stock disabled or key missing — don't fire doomed HTTP
     qc_budget = 3
     forbidden = scene.get("forbidden_visuals") or []
     for term in _shaped_queries(scene.get("search_terms", []), scene["n"]):
@@ -474,6 +478,16 @@ def fetch_scene_assets(scene: dict, need_seconds: float, outdir: str, cfg: dict,
                                          _orientation(cfg), cfg, gemini_key)
                     if photo:
                         beat_assets.append(photo)
+            if not beat_assets:
+                # A survey has a limited number of photographs — returning to
+                # the scene's own still (with a different move) reads as
+                # documentary honesty. A gradient card reads as a slideshow.
+                hero = next((a for a in assets
+                             if a.get("ai") and a.get("kind") == "image"), None)
+                if hero is not None:
+                    beat_assets.append({**hero, "beat_index": index})
+                    print(f"[assets] scene {scene['n']} beat {index + 1}: "
+                          "reusing scene still")
             if not beat_assets:
                 path = os.path.join(outdir,
                                     f"s{scene['n']:02d}_b{index:02d}_card.jpg")

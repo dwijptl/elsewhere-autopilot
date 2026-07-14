@@ -8,9 +8,9 @@ import glob
 import os
 import random
 
-from moviepy import (AudioFileClip, CompositeAudioClip, CompositeVideoClip,
-                     ImageClip, TextClip, VideoFileClip, afx,
-                     concatenate_videoclips, vfx)
+from moviepy import (AudioFileClip, ColorClip, CompositeAudioClip,
+                     CompositeVideoClip, ImageClip, TextClip, VideoFileClip,
+                     afx, concatenate_videoclips, vfx)
 
 FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf",
@@ -45,6 +45,12 @@ def _ken_burns(img_path: str, duration: float, w: int, h: int, zoom_in: bool):
 
 def _scene_visual(assets: list[dict], duration: float, cfg: dict, rng: random.Random):
     w, h, max_shot = cfg["video"]["width"], cfg["video"]["height"], cfg["video"]["max_shot_seconds"]
+    if not assets:
+        # Overlay-driven scenes (atlas / schematic / verdict card) can carry
+        # zero assets. The fallback renderer's job is to ship SOMETHING
+        # watchable — a dark bed under the overlay, never a crash.
+        return (ColorClip(size=(w, h), color=(16, 12, 8))
+                .with_duration(duration))
     parts, remaining, i = [], duration, 0
     zoom_in = rng.random() < 0.5
     while remaining > 0.05:

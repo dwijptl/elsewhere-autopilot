@@ -71,6 +71,14 @@ jobs:
         working-directory: remotion
         run: npm install --no-audit --no-fund
 
+      # PRE-SPEND GATE. The renderer is the last stage but its bugs are the
+      # most expensive kind: TTS, FLUX and Wan money is already spent by the
+      # time a render crashes. A type error costs 30 seconds here or $3 there.
+      # (Learned on the first pilot run, 2026-07-13.)
+      - name: Typecheck renderer BEFORE spending money
+        working-directory: remotion
+        run: npx tsc --noEmit
+
       - name: Python dependencies
         run: pip install -r requirements.txt
 

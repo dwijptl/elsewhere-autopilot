@@ -10,6 +10,8 @@ import tempfile
 import requests
 import soundfile as sf
 
+from tts import _sarvam_lang
+
 
 STT_URL = "https://api.sarvam.ai/speech-to-text"
 
@@ -53,7 +55,8 @@ def scene_word_times(scene: dict, cfg: dict) -> list[tuple[str, float, float]] |
                         STT_URL,
                         headers=headers,
                         files={"file": ("narration.wav", wav, "audio/wav")},
-                        data={"language_code": cfg["channel"].get("language", "hi-IN"),
+                        data={"language_code": _sarvam_lang(
+                                  cfg["channel"].get("language", "hi-IN")),
                               "model": "saaras:v3", "mode": "transcribe",
                               "with_timestamps": "true"},
                         timeout=90,

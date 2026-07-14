@@ -248,9 +248,9 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
           <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
             <Verdict
               data={{
-                verdict: manifest.verdict ?? 'FAILED',
-                settlement: manifest.settlement?.name,
-                reason: manifest.verdictReason,
+                verdict: m.verdict ?? 'FAILED',
+                settlement: m.settlement?.name,
+                reason: m.verdictReason,
               }}
               durationInFrames={overlayFrames}
             />
@@ -265,7 +265,7 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
           <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
             {style.name === 'dossier' ? (
               <Schematic
-                data={{...scene.glass, nodes: manifest.systems?.map((sy) => ({
+                data={{...scene.glass, nodes: m.systems?.map((sy) => ({
                   name: sy.name,
                   runs_at: sy.runs_at,
                   depends_on: sy.depends_on,
