@@ -315,6 +315,12 @@ def _normalize_glass(raw) -> dict:
         result["value"] = value
     if delta is not None:
         result["delta"] = delta
+    # A feedback loop drawn as a circle of stages — the dossier's answer to
+    # "the essential loop is never shown" (pilot review). 3-6 short labels.
+    if isinstance(data.get("loop"), list):
+        loop = [str(x)[:26] for x in data["loop"] if str(x).strip()][:6]
+        if len(loop) >= 3:
+            result["loop"] = loop
     direction = str(data.get("delta_direction", data.get("deltaDirection", ""))).lower()
     if direction in ("up", "down", "flat"):
         result["deltaDirection"] = direction

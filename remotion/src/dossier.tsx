@@ -256,6 +256,9 @@ export type VerdictData = {
   verdict: 'SURVIVED' | 'ADAPTED' | 'FAILED' | string;
   settlement?: string;
   reason?: string;
+  /** The human ledger — "9,400 evacuated · 0 dead". A verdict about a
+   *  settlement is ambiguous until the people are accounted for. */
+  outcome?: string;
 };
 
 export const Verdict: React.FC<{data: VerdictData; durationInFrames: number}> = ({
@@ -340,6 +343,174 @@ export const Verdict: React.FC<{data: VerdictData; durationInFrames: number}> = 
             {data.reason}
           </div>
         ) : null}
+
+        {data.outcome ? (
+          <div
+            style={{
+              marginTop: 6,
+              fontFamily: MONO,
+              fontSize: 26,
+              letterSpacing: 3,
+              color: DOSSIER.amber,
+              textTransform: 'uppercase',
+              opacity: interpolate(frame, [26, 46], [0, 0.95], {
+                extrapolateRight: 'clamp',
+              }),
+            }}
+          >
+            {data.outcome}
+          </div>
+        ) : null}
+      </div>
+    </Paper>
+  );
+};
+
+// ── The feedback loop, drawn ─────────────────────────────────────────────
+// "The essential loop is never shown" was the sharpest line in the pilot
+// review. This draws it: stages around a circle, arrows chasing each other,
+// each stage lighting as the narrator reaches it. The moment the circle
+// closes, the ring turns the failure red — the viewer sees the trap lock.
+export const LoopDiagram: React.FC<{
+  stages: string[];
+  headline?: string;
+  kicker?: string;
+  durationInFrames?: number;
+}> = ({stages, headline, kicker}) => {
+  const frame = useCurrentFrame();
+  const {fps, width, height} = useVideoConfig();
+  const s = Math.max(width, height) / 1920;
+  const cx = width / 2;
+  const cy = height * 0.52;
+  const R = Math.min(width, height) * 0.27;
+  const n = Math.max(stages.length, 3);
+  const stageFrames = Math.max(Math.round(fps * 1.1), 1);
+  const lit = Math.min(Math.floor(frame / stageFrames), n);
+  const closed = lit >= n;
+  const ringColor = closed ? VERDICT_COLORS.FAILED : DOSSIER.amber;
+  const closeFade = interpolate(frame, [n * stageFrames, n * stageFrames + fps],
+    [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+
+  const pos = (i: number) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
+    return {x: cx + R * Math.cos(a), y: cy + R * Math.sin(a), a};
+  };
+
+  return (
+    <Paper>
+      <div style={{position: 'absolute', top: 64 * s, left: 84 * s}}>
+        {kicker ? (
+          <div style={{fontFamily: MONO, fontSize: 24 * s, letterSpacing: 8,
+            color: DOSSIER.copper, textTransform: 'uppercase'}}>{kicker}</div>
+        ) : null}
+        {headline ? (
+          <div style={{fontFamily: SANS, fontSize: 52 * s, fontWeight: 700,
+            color: DOSSIER.text, marginTop: 10 * s}}>{headline}</div>
+        ) : null}
+      </div>
+      <svg width={width} height={height}
+        style={{position: 'absolute', inset: 0}}>
+        {stages.slice(0, n).map((_, i) => {
+          const from = pos(i);
+          const to = pos((i + 1) % n);
+          const visible = i < lit;
+          const midA = (from.a + (i + 1 === n ? to.a + 2 * Math.PI : to.a)) / 2;
+          const mx = cx + R * 1.06 * Math.cos(midA);
+          const my = cy + R * 1.06 * Math.sin(midA);
+          return visible ? (
+            <g key={i} opacity={0.9}>
+              <path
+                d={`M ${from.x} ${from.y} Q ${mx} ${my} ${to.x} ${to.y}`}
+                fill="none" stroke={ringColor} strokeWidth={3 * s}
+                strokeDasharray="6 7" />
+              <circle cx={to.x} cy={to.y} r={7 * s} fill={ringColor} />
+            </g>
+          ) : null;
+        })}
+      </svg>
+      {stages.slice(0, n).map((label, i) => {
+        const p = pos(i);
+        const on = i < lit || (i === lit && frame % stageFrames > stageFrames * 0.4);
+        const enter = interpolate(frame - i * stageFrames, [0, 12], [0, 1],
+          {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+        const outward = 1.32;
+        const lx = cx + R * outward * Math.cos(p.a);
+        const ly = cy + R * outward * Math.sin(p.a);
+        return (
+          <div key={i} style={{
+            position: 'absolute', left: lx, top: ly,
+            transform: 'translate(-50%, -50%)',
+            fontFamily: MONO, fontSize: 30 * s, fontWeight: 700,
+            letterSpacing: 3, textAlign: 'center', whiteSpace: 'nowrap',
+            color: on ? DOSSIER.text : DOSSIER.copper,
+            opacity: enter * (on ? 1 : 0.45),
+          }}>{label}</div>
+        );
+      })}
+      <div style={{
+        position: 'absolute', left: cx, top: cy,
+        transform: 'translate(-50%, -50%)', textAlign: 'center',
+        fontFamily: MONO, fontSize: 30 * s, letterSpacing: 6,
+        color: VERDICT_COLORS.FAILED, textTransform: 'uppercase',
+        opacity: closeFade,
+      }}>
+        EACH TURN<br />FEEDS THE NEXT
+      </div>
+    </Paper>
+  );
+};
+
+// ── Two doors, both losing ───────────────────────────────────────────────
+// "Two moves left" spoke of a choice the screen never showed. This shows it:
+// two options side by side, each with its consequence, both ending red.
+export const TwoChoices: React.FC<{
+  options: {title?: string; consequence?: string}[];
+  kicker?: string;
+  durationInFrames?: number;
+}> = ({options, kicker}) => {
+  const frame = useCurrentFrame();
+  const {fps, width, height} = useVideoConfig();
+  const s = Math.max(width, height) / 1920;
+  const two = options.slice(0, 2);
+  return (
+    <Paper>
+      <div style={{position: 'absolute', top: 70 * s, width: '100%',
+        textAlign: 'center', fontFamily: MONO, fontSize: 26 * s,
+        letterSpacing: 8, color: DOSSIER.copper, textTransform: 'uppercase'}}>
+        {kicker || 'TWO MOVES LEFT'}
+      </div>
+      <div style={{position: 'absolute', inset: `${height * 0.2}px 0 ${height * 0.14}px 0`,
+        display: 'flex', justifyContent: 'center', gap: 60 * s,
+        alignItems: 'stretch', padding: `0 ${width * 0.08}px`}}>
+        {two.map((o, i) => {
+          const at = Math.round((0.4 + i * 1.6) * fps);
+          const enter = spring({frame: frame - at, fps,
+            config: {damping: 100, stiffness: 130}});
+          const doomAt = Math.round((0.4 + i * 1.6 + 1.1) * fps);
+          const doom = interpolate(frame - doomAt, [0, 14], [0, 1],
+            {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+          return (
+            <div key={i} style={{
+              flex: 1, maxWidth: width * 0.34,
+              border: `2px solid rgba(140,106,74,0.55)`,
+              borderRadius: 8 * s, padding: `${34 * s}px ${36 * s}px`,
+              background: 'rgba(42,36,30,0.55)',
+              opacity: enter,
+              transform: `translateY(${interpolate(enter, [0, 1], [24, 0])}px)`,
+              display: 'flex', flexDirection: 'column', gap: 20 * s,
+            }}>
+              <div style={{fontFamily: MONO, fontSize: 22 * s, letterSpacing: 5,
+                color: DOSSIER.amber}}>{`OPTION ${i === 0 ? 'A' : 'B'}`}</div>
+              <div style={{fontFamily: SANS, fontSize: 42 * s, fontWeight: 700,
+                color: DOSSIER.text, lineHeight: 1.25}}>{o.title || ''}</div>
+              <div style={{flex: 1}} />
+              <div style={{fontFamily: SANS, fontSize: 30 * s, lineHeight: 1.4,
+                color: VERDICT_COLORS.FAILED, opacity: doom}}>
+                {o.consequence || ''}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </Paper>
   );

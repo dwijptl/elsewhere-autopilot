@@ -85,14 +85,22 @@ export const ParallaxKenBurns: React.FC<{
   const dirX = random(`px-${seed}`) < 0.5 ? 1 : -1;
   const dirY = random(`py-${seed}`) < 0.5 ? 1 : -1;
   const zoomIn = random(`pz-${seed}`) < 0.6;
+  // Detail-crop tier: ~1 in 3 shots punches into a quadrant at ~2x — one
+  // photograph becomes an establishing shot AND an insert, the way a real
+  // documentary editor reuses a plate. Kills the "same still for 30s" read.
+  const detail = random(`pd-${seed}`) < 0.34;
+  const base = detail ? 1.9 : 1.1;
   const fgScale = zoomIn
-    ? interpolate(t, [0, 1], [1.1, 1.24])
-    : interpolate(t, [0, 1], [1.24, 1.1]);
+    ? interpolate(t, [0, 1], [base, base + 0.14])
+    : interpolate(t, [0, 1], [base + 0.14, base]);
   const bgScale = zoomIn
     ? interpolate(t, [0, 1], [1.3, 1.36])
     : interpolate(t, [0, 1], [1.36, 1.3]);
-  const fgX = dirX * interpolate(t, [0, 1], [0, 42]);
-  const fgY = dirY * interpolate(t, [0, 1], [0, 26]);
+  // detail shots look at a seeded off-centre point, not the middle again
+  const focusX = detail ? (random(`fx-${seed}`) - 0.5) * 260 : 0;
+  const focusY = detail ? (random(`fy-${seed}`) - 0.5) * 150 : 0;
+  const fgX = focusX + dirX * interpolate(t, [0, 1], [0, 42]);
+  const fgY = focusY + dirY * interpolate(t, [0, 1], [0, 26]);
   const rot = dirX * interpolate(t, [0, 1], [0, 0.5]);
   return (
     <AbsoluteFill style={{overflow: 'hidden'}}>
@@ -515,7 +523,10 @@ export const Outro: React.FC<{
   const inSpring = spring({frame: frame - 4, fps, config: {damping: 200, stiffness: 110}});
   return (
     <AbsoluteFill style={{
-      background: `radial-gradient(ellipse at 50% 35%, ${BRAND.panel} 0%, ${BRAND.navy} 70%)`,
+      // the end card belongs to the CHANNEL's palette, not channel 1's navy
+      background: style.name === 'dossier'
+        ? `radial-gradient(ellipse at 50% 35%, #2A241E 0%, ${style.bg} 70%)`
+        : `radial-gradient(ellipse at 50% 35%, ${BRAND.panel} 0%, ${BRAND.navy} 70%)`,
       justifyContent: 'center', alignItems: 'center', fontFamily,
     }}>
       <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center',

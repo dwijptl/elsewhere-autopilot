@@ -36,7 +36,7 @@ import {
 } from './motion-library';
 import type {MotionSpec} from './motion-library';
 import {GlassCard} from './glass';
-import {Schematic, Verdict} from './dossier';
+import {LoopDiagram, Schematic, TwoChoices, Verdict} from './dossier';
 import {MetricReadout, TelemetryHUD} from './hud';
 import type {Milestone} from './hud';
 import {blurWhip, zoomPunch} from './transitions';
@@ -279,19 +279,35 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
                 verdict: m.verdict ?? 'FAILED',
                 settlement: m.settlement?.name,
                 reason: m.verdictReason,
+                outcome: (m as any).verdictOutcome,
               }}
               durationInFrames={overlayFrames}
             />
           </OverlayWindow>
         ) : null}
-        {mode === 'card' && !scene.verdictCard && scene.card && scene.card.headline ? (
+        {mode === 'card' && !scene.verdictCard
+          && ((scene.card as any)?.options?.length ?? 0) >= 2 ? (
+          // "Two moves left" spoken over nothing was a pilot-review failure —
+          // a choice the audience can't see is a choice they can't feel.
+          <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
+            <TwoChoices options={(scene.card as any).options}
+              kicker={scene.card?.kicker} durationInFrames={overlayFrames} />
+          </OverlayWindow>
+        ) : null}
+        {mode === 'card' && !scene.verdictCard
+          && !((scene.card as any)?.options?.length >= 2)
+          && scene.card && scene.card.headline ? (
           <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
             <EditorialCard card={scene.card} style={style} variant={motion.cardVariant} />
           </OverlayWindow>
         ) : null}
         {mode === 'glass' && scene.glass && (scene.glass.headline || scene.glass.label || scene.glass.location || scene.glass.chapter || scene.glass.value != null) ? (
           <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
-            {style.name === 'dossier' ? (
+            {style.name === 'dossier' && ((scene.glass as any)?.loop?.length ?? 0) >= 3 ? (
+              <LoopDiagram stages={(scene.glass as any).loop}
+                headline={scene.glass.headline} kicker={scene.glass.kicker}
+                durationInFrames={overlayFrames} />
+            ) : style.name === 'dossier' ? (
               <Schematic
                 data={{...scene.glass, nodes: m.systems?.map((sy) => ({
                   name: sy.name,
@@ -353,8 +369,13 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
           milestones={milestones} metricLabel={metricLabel}
           metricUnit={metricUnit} />
       ) : hasMetric ? (
-        <MetricReadout milestones={milestones} label={metricLabel}
-          unit={metricUnit} accent={style.accent} />
+        // clamped to the story — the counter must not haunt the end card
+        <Sequence from={0} durationInFrames={Math.max(
+          Math.round(((m.scenes[m.scenes.length - 1]?.start ?? 0)
+            + (m.scenes[m.scenes.length - 1]?.audioDuration ?? 0)) * fps), 1)}>
+          <MetricReadout milestones={milestones} label={metricLabel}
+            unit={metricUnit} accent={style.accent} />
+        </Sequence>
       ) : null}
       <CtaLayer event={m.cta} style={style} fps={fps} />
       {m.watermarkPath ? (

@@ -563,6 +563,9 @@ def main() -> None:
         # the case-level spine (the Verdict card and the Schematic read this)
         "verdict": script.get("verdict", "FAILED"),
         "verdictReason": script.get("verdict_reason", ""),
+        # the human ledger — a verdict about a settlement is ambiguous until
+        # the people are accounted for (pilot review, 2026-07-14)
+        "verdictOutcome": str(script.get("human_outcome", ""))[:80],
         "settlement": script.get("settlement", {}) or {},
         "systems": [
             {"name": sy.get("name", ""),
