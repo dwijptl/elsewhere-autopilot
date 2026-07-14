@@ -675,7 +675,12 @@ def main() -> None:
     quality_requires_review = (
         bool(cfg.get("longform_quality", {}).get("render_qc", {}).get("gate", False))
         and not quality_report.get("passed", False))
-    audit_requires_review = not render_audit.get("publishable", True)
+    # A SKIPPED audit is not a PASSED audit. Run #4 published as a normal
+    # release because the audit skipped and defaulted publishable=True —
+    # unverified must always mean draft, never "assume fine".
+    audit_status = str(render_audit.get("status", "skipped"))
+    audit_requires_review = (not render_audit.get("publishable", True)
+                             or audit_status.startswith("skipped"))
     draft_release = (voice_fallback or fact_requires_review
                      or quality_requires_review or audit_requires_review)
     status_voice = "⚠️ FALLBACK — DO NOT PUBLISH" if voice_fallback else "OK (cloned)"
