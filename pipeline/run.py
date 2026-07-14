@@ -33,6 +33,7 @@ import atlasgen                     # noqa: E402
 import motion as motion_mod         # noqa: E402
 import postprocess                  # noqa: E402
 import quality_report as quality_mod  # noqa: E402
+import render_check                  # noqa: E402
 import script_gen                   # noqa: E402
 import sfx as sfx_mod               # noqa: E402
 import tts as tts_mod               # noqa: E402
@@ -623,6 +624,11 @@ def main() -> None:
         final_path, cfg, gemini_key,
         forbidden=script.get("forbidden_visuals") or [],
         out_path=os.path.join(outdir, "render_audit.json"))
+    # G12 — deterministic flat-frame scan of the finished pixels. Unlike the
+    # vision audit this cannot skip, cannot hit a quota, and needs no key.
+    # It exists because twice the assets were fine and the screen was not.
+    flat_report = render_check.check(final_path)
+    print(f"[flatcheck] {render_check.describe(flat_report)}")
 
     # 7) thumbnail ---------------------------------------------------------------
     thumb_path = os.path.join(outdir, "thumbnail.jpg")
@@ -681,8 +687,10 @@ def main() -> None:
     audit_status = str(render_audit.get("status", "skipped"))
     audit_requires_review = (not render_audit.get("publishable", True)
                              or audit_status.startswith("skipped"))
+    flat_requires_review = not flat_report.get("passed", True)
     draft_release = (voice_fallback or fact_requires_review
-                     or quality_requires_review or audit_requires_review)
+                     or quality_requires_review or audit_requires_review
+                     or flat_requires_review)
     status_voice = "⚠️ FALLBACK — DO NOT PUBLISH" if voice_fallback else "OK (cloned)"
     status_fact = (f"⚠️ REVIEW CLAIMS ({fact_report.get('unsupported', 0)} unsupported)"
                    if fact_requires_review else fact_report.get("status", "unknown"))
@@ -704,7 +712,7 @@ def main() -> None:
                     else render_audit.get("status", "skipped"))
     meta = f"""## {script['title']}
 
-{voice_banner}{fact_banner}{audit_banner}**Reliability:** Voice: {status_voice} | Captions: {caption_status} | Fact-check: {status_fact} | Quality: {status_quality} | Render audit: {status_audit}
+{voice_banner}{fact_banner}{audit_banner}**Reliability:** Voice: {status_voice} | Captions: {caption_status} | Fact-check: {status_fact} | Quality: {status_quality} | Render audit: {status_audit} | Flat check: {render_check.describe(flat_report)}
 
 **Duration:** {duration / 60:.1f} min · **Scenes:** {len(scenes)} · **Style:** {style} ·
 **AI visuals:** {n_ai} · **Run:** {stamp} · **Renderer:** {used_engine} ·
@@ -756,6 +764,7 @@ Remotion. Brand: Terra Incognita.*
     with open(os.path.join(outdir, "run_summary.json"), "w", encoding="utf-8") as f:
         json.dump({"draft_release": draft_release, "voice_fallback": voice_fallback,
                    "voice": voice_line, "captions": caption_status,
+                   "flat_check": flat_report,
                    "canon_check": fact_report,
                    "quality": quality_report,
                    "render_audit": render_audit,
