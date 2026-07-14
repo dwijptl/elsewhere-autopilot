@@ -231,7 +231,8 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
     // (Pilot #2: a 34-second diagram scene showed 5s of card and 29s of
     // empty gradient. The overlay cap is for punctuation, not chapters.)
     const overlayIsScene = style.name === 'dossier' &&
-      (Boolean(scene.verdictCard) || mode === 'glass' || mode === 'stat');
+      (Boolean(scene.verdictCard) || mode === 'glass' || mode === 'stat'
+        || ((scene.card as any)?.options?.length ?? 0) >= 2);
     const overlayFrames = overlayIsScene
       ? Math.max(1, sceneFrames - impactF)
       : Math.max(1, Math.min(sceneFrames - impactF,
