@@ -206,8 +206,16 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
     const impactF = Math.max(0, Math.min(
       Math.round(Number((scene as any).impactStart ?? 0) * fps),
       Math.max(sceneFrames - fps, 0)));
-    const overlayFrames = Math.max(1, Math.min(sceneFrames - impactF,
-      Math.round(overlaySeconds * fps)));
+    // Dossier schematic and verdict scenes ARE their overlay — the diagram
+    // is the content, not a garnish, so it holds for the whole scene.
+    // (Pilot #2: a 34-second diagram scene showed 5s of card and 29s of
+    // empty gradient. The overlay cap is for punctuation, not chapters.)
+    const overlayIsScene = style.name === 'dossier' &&
+      (Boolean(scene.verdictCard) || mode === 'glass');
+    const overlayFrames = overlayIsScene
+      ? Math.max(1, sceneFrames - impactF)
+      : Math.max(1, Math.min(sceneFrames - impactF,
+          Math.round(overlaySeconds * fps)));
     const isMap = mode === 'map' && scene.map && scene.map.world;
     const motion: MotionSpec = scene.motion ?? {};
     items.push(

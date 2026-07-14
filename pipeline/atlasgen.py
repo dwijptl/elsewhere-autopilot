@@ -82,6 +82,41 @@ def _continents(seed: int = WORLD_SEED) -> list[list[tuple[float, float]]]:
     return shapes
 
 
+RELIEF = (96, 74, 48)  # highland contour — lighter than land, dimmer than coast
+
+
+def _relief(seed: int = WORLD_SEED) -> list[list[tuple[float, float]]]:
+    """Deterministic highland contours — the terrain BETWEEN coastlines.
+
+    A deep-inland crop (the Cinder Shelf sits 30 degrees from the nearest
+    coast) must still read as a surveyed place. Same harmonic-blob method as
+    _continents, same seed discipline: these hills are canon and never move.
+    Each highland yields nested contour rings, like a real relief map.
+    """
+    rng = random.Random(seed ^ 0x517F)
+    contours = []
+    anchors = [(-70, 12, 58), (-40, -48, 30), (95, 5, 26),
+               (140, 38, 22), (120, -40, 25), (170, -8, 14)]
+    for lon_c, lat_c, radius in anchors:
+        for _ in range(4):
+            hl_lon = lon_c + rng.uniform(-0.55, 0.55) * radius
+            hl_lat = lat_c + rng.uniform(-0.45, 0.45) * radius * 0.72
+            hl_r = rng.uniform(3.5, 0.22 * radius)
+            octaves = [(k + 2, rng.uniform(-0.35, 0.35) / (k + 1) ** 0.75,
+                        rng.uniform(0, 2 * math.pi)) for k in range(6)]
+            for ring_scale in (1.0, 0.62, 0.30):
+                pts, steps = [], 120
+                for i in range(steps):
+                    th = 2 * math.pi * i / steps
+                    wobble = 1.0 + sum(a * math.sin(f * th + ph)
+                                       for f, a, ph in octaves)
+                    r = hl_r * ring_scale * max(0.45, wobble)
+                    pts.append((hl_lon + r * math.cos(th) * 1.2,
+                                max(-88, min(88, hl_lat + r * math.sin(th) * 0.75))))
+                contours.append(pts)
+    return contours
+
+
 def _project(lon: float, lat: float, bbox: tuple, size: tuple) -> tuple:
     x = (lon - bbox[0]) / (bbox[2] - bbox[0]) * size[0]
     y = (bbox[3] - lat) / (bbox[3] - bbox[1]) * size[1]
@@ -93,6 +128,41 @@ def _render(shapes: list, bbox: tuple, size: tuple, grid_step: int,
     img = Image.new("RGB", size, SEA)
     d = ImageDraw.Draw(img)
 
+    for pts in shapes:
+        poly = [_project(lon, lat, bbox, size) for lon, lat in pts]
+        d.polygon(poly, fill=LAND, outline=LAND_EDGE)
+        d.line(poly + [poly[0]], fill=LAND_EDGE, width=4)
+
+    # Highland contours — drawn only where they sit on land, so the sea
+    # stays quiet. A relief line crossing water would betray the projection.
+    for pts in _relief():
+        proj = [_project(lon, lat, bbox, size) for lon, lat in pts]
+        for i in range(len(proj)):
+            a, b = proj[i], proj[(i + 1) % len(proj)]
+            mx, my = int((a[0] + b[0]) / 2), int((a[1] + b[1]) / 2)
+            if 0 <= mx < size[0] and 0 <= my < size[1] \
+                    and img.getpixel((mx, my)) == LAND:
+                d.line([a, b], fill=RELIEF, width=2)
+
+    # Terrain stipple — deterministic, so the planet's texture is as canon as
+    # its coastlines. Without it, a land-locked or open-sea crop is a flat
+    # colour field and the region plate reads as a void (pilot #2, scene 2).
+    rng = random.Random(WORLD_SEED ^ hash((round(bbox[0], 2), round(bbox[1], 2),
+                                           round(bbox[2], 2), round(bbox[3], 2))))
+    land_dot = (74, 60, 44)
+    sea_dot = (42, 56, 57)
+    for _ in range(int(size[0] * size[1] / 900)):
+        x = rng.randrange(0, size[0])
+        y = rng.randrange(0, size[1])
+        base = img.getpixel((x, y))
+        if base == LAND:
+            d.ellipse([x, y, x + 3, y + 3], fill=land_dot)
+        elif base == SEA and rng.random() < 0.35:
+            d.ellipse([x, y, x + 2, y + 2], fill=sea_dot)
+
+    # Graticule ON TOP of terrain — a survey plate is a document, and the
+    # grid is the proof. (It used to be drawn first, and the land polygons
+    # painted straight over it.)
     lon0 = math.floor(bbox[0] / grid_step) * grid_step
     lat0 = math.floor(bbox[1] / grid_step) * grid_step
     for lon in range(int(lon0), int(bbox[2]) + grid_step, grid_step):
@@ -102,11 +172,6 @@ def _render(shapes: list, bbox: tuple, size: tuple, grid_step: int,
         _, y = _project(0, lat, bbox, size)
         d.line([(0, y), (size[0], y)], fill=GRID, width=2)
 
-    for pts in shapes:
-        poly = [_project(lon, lat, bbox, size) for lon, lat in pts]
-        d.polygon(poly, fill=LAND, outline=LAND_EDGE)
-        d.line(poly + [poly[0]], fill=LAND_EDGE, width=4)
-
     # Revealed regions get an amber survey ring. Everything else stays dark —
     # the map does not spoil an episode that has not aired.
     for r in regions:
@@ -114,7 +179,9 @@ def _render(shapes: list, bbox: tuple, size: tuple, grid_step: int,
             continue
         lon, lat = r["_coords"]
         x, y = _project(lon, lat, bbox, size)
-        rad = max(size) * 0.012
+        # region plates (fine grid) get a larger ring — at that zoom the
+        # ring is the subject, not an annotation
+        rad = max(size) * (0.028 if grid_step < 30 else 0.012)
         d.ellipse([x - rad, y - rad, x + rad, y + rad],
                   outline=LAND_EDGE, width=3)
         d.ellipse([x - rad / 3, y - rad / 3, x + rad / 3, y + rad / 3],
@@ -168,7 +235,9 @@ def render_scene_maps(region_id: str, workdir: str, scene_n: int,
                   else (-180, -lat_span_w / 2, 180, lat_span_w / 2))
         world = _render(shapes, bbox_w, size, 30, regions)
 
-        lon_span = 24.0 if portrait else 40.0
+        # wide enough that some coastline is almost always in frame — an
+        # all-land or all-sea crop reads as nothing even with texture
+        lon_span = 36.0 if portrait else 60.0
         lat_span = lon_span / aspect
         r_lat = max(min(lat, 90 - lat_span / 2), lat_span / 2 - 90)
         bbox_r = (lon - lon_span / 2, r_lat - lat_span / 2,

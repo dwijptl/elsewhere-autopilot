@@ -129,8 +129,14 @@ def _attach_hero(scenes: list[dict], poses: dict) -> None:
     consistent subject on screen while its state visibly changes with the
     journey — continuity stock people can never provide."""
     default = next(iter(poses.values()))
+    # The FINAL pose lands on the last ordinary scene — never the tease
+    # (its closing image is a contract with next week) and never the
+    # verdict card (near-silence, no garnish). Pilot #2 shipped a tunnel
+    # where the Slow Sea glimpse belonged; this is why.
+    ordinary = [sc for sc in scenes[:-1] if not sc.get("verdict_card")]
+    final_n = (ordinary[-1]["n"] if ordinary else scenes[0]["n"])
     wanted = {scenes[0]["n"]: poses.get("establish", default),
-              scenes[-1]["n"]: poses.get("final", default)}
+              final_n: poses.get("final", default)}
     reveal_n = next((sc["n"] for sc in scenes
                      if sc.get("delivery") == "reveal"), None)
     if reveal_n is not None and reveal_n not in wanted:
@@ -284,19 +290,25 @@ def main() -> None:
     workdir = os.path.join(outdir, "work")
     os.makedirs(workdir, exist_ok=True)
 
-    # style rotation: deterministic, based on how many videos exist ---------
-    done_count = 0
-    try:
-        with open(os.path.join(REPO_ROOT, "topics_done.txt"), encoding="utf-8") as f:
-            done_count = sum(1 for ln in f
-                             if ln.strip() and not ln.startswith("#")
-                             and not ln.startswith("NEXT:"))
-    except Exception:
-        pass
-    style = STYLES[done_count % len(STYLES)]
-    # telemetry shares editorial's photographic grammar + ambient palette for
-    # the python-side helpers that don't know the new pack
-    base_style = "editorial" if style == "telemetry" else style
+    # style: if config PINS a pack, honour it — the world needs one look.
+    # (Pilot run #2 shipped with channel 1's rotating styles stomping the
+    # dossier pack: purple gradients, a TI watermark, and no schematic.
+    # Never again.) Rotation only applies when no pack is pinned.
+    pinned = str(cfg.get("render", {}).get("style_pack", "")).strip()
+    if pinned:
+        style = base_style = pinned
+    else:
+        done_count = 0
+        try:
+            with open(os.path.join(REPO_ROOT, "topics_done.txt"), encoding="utf-8") as f:
+                done_count = sum(1 for ln in f
+                                 if ln.strip() and not ln.startswith("#")
+                                 and not ln.startswith("NEXT:"))
+        except Exception:
+            pass
+        style = STYLES[done_count % len(STYLES)]
+        # telemetry shares editorial's photographic grammar + ambient palette
+        base_style = "editorial" if style == "telemetry" else style
     cfg.setdefault("render", {})["style_pack"] = base_style  # steers AI-image look
     print(f"=== Faceless Autopilot run {stamp} · style: {style} ===")
 
