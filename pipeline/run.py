@@ -452,13 +452,11 @@ def main() -> None:
     if hero_poses:
         _attach_hero(scenes, hero_poses)
 
-    # 3b) hero motion — Wan i2v animates 1-2 flagged stills; fail-open ------
-    wan_motion.animate_heroes(scenes, cfg, workdir)
-
-    # 3c) EXPORT GATE — no silent slideshows. A narration scene longer than
-    # 3s with nothing to show is an unfinished video, and shipping it teaches
-    # viewers the channel is broken. Overlay-held scenes (schematic, verdict,
-    # kinetic, stat, atlas) carry their own visual and are exempt.
+    # 3b) EXPORT GATE — no silent slideshows. Runs BEFORE the Wan spend:
+    # if the stills are missing, the run must die while the only money spent
+    # is TTS, not after buying motion shots for a video that can't ship.
+    # Overlay-held scenes (schematic, verdict, kinetic, stat, atlas) carry
+    # their own visual and are exempt.
     for sc in scenes:
         carries_own_visual = (
             sc.get("visual_mode") in ("glass", "card", "kinetic", "stat")
@@ -474,8 +472,11 @@ def main() -> None:
             raise RuntimeError(
                 f"EXPORT GATE: scene {sc.get('n')} runs "
                 f"{sc.get('audio_duration', 0):.1f}s with no real visual "
-                f"(gradients don't count) and no overlay. Refusing to export "
-                f"an unfinished video.")
+                f"(gradients don't count) and no overlay. Refusing to spend "
+                f"further on an unfinished video.")
+
+    # 3c) hero motion — Wan i2v animates 1-2 flagged stills; fail-open ------
+    wan_motion.animate_heroes(scenes, cfg, workdir)
 
     # 4) captions ------------------------------------------------------------
     events, srt = captions_mod.build_captions(scenes, cfg["captions"]["max_chars"])
