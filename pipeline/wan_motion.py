@@ -61,11 +61,18 @@ def _probe_duration(path: str, fallback: float) -> float:
 
 
 def _hero_still(scene: dict) -> dict | None:
-    """The scene's generated still — the frame the motion shot grows from."""
+    """The scene's OWN generated still — the frame the motion shot grows
+    from. Hero poses are skipped: on run #3 the pose was inserted at index 0
+    and the Wan budget animated the recurring gallery instead of the scene's
+    subject. The pose is garnish; the scene's still is the story."""
+    fallback = None
     for a in scene.get("assets", []):
         if a.get("kind") == "image" and a.get("ai"):
+            if a.get("hero_pose"):
+                fallback = fallback or a
+                continue
             return a
-    return None
+    return fallback
 
 
 def _build_body(scene: dict, still_path: str, cfg: dict) -> dict:

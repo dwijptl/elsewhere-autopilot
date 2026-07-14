@@ -100,3 +100,17 @@ def test_canon_seed_flows_into_body(monkeypatch, tmp_path):
     assert body["num_frames"] == 81          # billing floor, not 1.25x tier
     assert body["image_url"].startswith("data:image/png;base64,")
     assert "documentary" in body["prompt"]
+
+
+def test_hero_still_skips_hero_pose(tmp_path):
+    # Run #3 animated the recurring gallery pose instead of the scene's own
+    # subject. The pose (inserted at index 0) must be skipped when the scene
+    # has its own still — and used only as a last resort.
+    scene = {"n": 1, "hero_motion": True, "assets": [
+        {"path": "pose.png", "kind": "image", "ai": True, "hero_pose": True},
+        {"path": "own.png", "kind": "image", "ai": True},
+    ]}
+    assert wan_motion._hero_still(scene)["path"] == "own.png"
+    scene_only_pose = {"n": 2, "assets": [
+        {"path": "pose.png", "kind": "image", "ai": True, "hero_pose": True}]}
+    assert wan_motion._hero_still(scene_only_pose)["path"] == "pose.png"

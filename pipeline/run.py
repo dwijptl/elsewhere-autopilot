@@ -149,7 +149,7 @@ def _attach_hero(scenes: list[dict], poses: dict) -> None:
         bi = max(len(beats) - 1, 0) if sc["n"] == scenes[-1]["n"] else 0
         sc["assets"].insert(0, {"path": path, "kind": "image",
                                 "ai": True, "duration": None,
-                                "beat_index": bi})
+                                "beat_index": bi, "hero_pose": True})
     print(f"[hero] attached {len(poses)} pose(s) to scenes {sorted(wanted)}")
 
 
@@ -427,6 +427,12 @@ def main() -> None:
     assets_mod.reset_episode_state()  # fresh luma/duplicate guards per video
     used: set = set(usage_log["pexels"])
     used_prompts: set = set(usage_log["prompts"])
+    if script.get("handwritten"):
+        # The prompt ledger stops DIFFERENT episodes repeating imagery. A
+        # hand-written script re-run is the SAME episode — consulting the
+        # ledger here skipped every scene still on pilot run #3 and shipped
+        # captions over gradients. Re-runs regenerate their own imagery.
+        used_prompts = set()
     aicfg = cfg.get("ai_images", {})
     if os.environ.get("FAL_KEY", "").strip():  # FLUX on -> richer AI visuals
         ai_budget = [int(aicfg.get("max_per_video_flux", 4))]
@@ -457,12 +463,18 @@ def main() -> None:
             sc.get("visual_mode") in ("glass", "card", "kinetic", "stat")
             or sc.get("verdict_card")
             or (sc.get("visual_mode") == "map" and sc.get("map_render")))
-        if (float(sc.get("audio_duration", 0)) > 3.0 and not sc.get("assets")
+        # A gradient card is a placeholder, not a visual — a scene carried
+        # entirely by gradients is exactly the "empty backgrounds" failure
+        # this gate exists to stop (pilot run #3).
+        real_visual = any(a.get("ai") or a.get("kind") == "video"
+                          for a in sc.get("assets", []))
+        if (float(sc.get("audio_duration", 0)) > 3.0 and not real_visual
                 and not carries_own_visual):
             raise RuntimeError(
                 f"EXPORT GATE: scene {sc.get('n')} runs "
-                f"{sc.get('audio_duration', 0):.1f}s with no visual asset and "
-                f"no overlay. Refusing to export an unfinished video.")
+                f"{sc.get('audio_duration', 0):.1f}s with no real visual "
+                f"(gradients don't count) and no overlay. Refusing to export "
+                f"an unfinished video.")
 
     # 4) captions ------------------------------------------------------------
     events, srt = captions_mod.build_captions(scenes, cfg["captions"]["max_chars"])

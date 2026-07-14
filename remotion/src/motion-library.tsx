@@ -433,7 +433,7 @@ export const SceneFrame: React.FC<{
         background: 'rgba(0,0,0,.82)'}}/>
       <div style={{position: 'absolute', right: 36 * s, bottom: 55 * s,
         fontFamily, fontSize: 18 * s, letterSpacing: 5, color: 'rgba(255,255,255,.55)'}}>
-        TI · {String(sceneN).padStart(2, '0')}
+        EW · {String(sceneN).padStart(2, '0')}
       </div>
     </AbsoluteFill>;
   }
