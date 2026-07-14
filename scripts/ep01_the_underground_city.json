@@ -14,9 +14,18 @@
   "thumb_question": "What shared one pipe?",
   "thumb_prompt": "a massive circular basalt hatch set into a cracked desert plateau at dusk, heat shimmer rising off the stone, a faint rust-black crust creeping from the hatch seams, one small human figure in dusty field gear standing before it, warm dim amber K-dwarf sunlight, low angle, ochre dust haze, real depth in the background, documentary photograph, 35mm, film grain, bottom third of frame kept clear",
   "thumb_options": [
-    {"text": "IT COOKED ITSELF", "concept": "the sealed hatch with heat shimmer and creeping black crust, tiny human for scale"},
-    {"text": "ONE PIPE. 9,400 LIVES.", "concept": "a single massive pipe descending into darkness, rust-black film blooming on its flank"},
-    {"text": "SEALED. IN GOOD ORDER.", "concept": "a hand pressing a seal stamp onto hatch documentation, city lights dying below"}
+    {
+      "text": "IT COOKED ITSELF",
+      "concept": "the sealed hatch with heat shimmer and creeping black crust, tiny human for scale"
+    },
+    {
+      "text": "ONE PIPE. 9,400 LIVES.",
+      "concept": "a single massive pipe descending into darkness, rust-black film blooming on its flank"
+    },
+    {
+      "text": "SEALED. IN GOOD ORDER.",
+      "concept": "a hand pressing a seal stamp onto hatch documentation, city lights dying below"
+    }
   ],
   "region": "REG-01",
   "series": "stress_test",
@@ -26,11 +35,36 @@
     "population": 9400
   },
   "systems": [
-    {"name": "COOLING", "how": "A closed water loop gathers waste heat from coil banks on every level and rejects it into an aquifer 500 metres below the lowest gallery.", "runs_at": "31 C at level 9", "depends_on": "the deep aquifer"},
-    {"name": "WATER", "how": "The drinking supply, drawn up, filtered, arriving pre-chilled by the deep rock.", "runs_at": "12 C at the tap", "depends_on": "the deep aquifer"},
-    {"name": "POWER", "how": "Geothermal taps sunk into the same hot basalt the city hides from.", "runs_at": "9.5 MW continuous", "depends_on": "the basalt heat gradient"},
-    {"name": "AIR", "how": "Passive stack ventilation — the day-night temperature swing at the surface pumps the shafts like a slow lung.", "runs_at": "full exchange every 40 minutes", "depends_on": "the surface shafts"},
-    {"name": "FOOD", "how": "Fungal galleries on level 9, fed on organic fractions sieved from surface dust.", "runs_at": "110 percent of need", "depends_on": "surface dust deliveries"}
+    {
+      "name": "COOLING",
+      "how": "A closed water loop gathers waste heat from coil banks on every level and rejects it into an aquifer 500 metres below the lowest gallery.",
+      "runs_at": "31 C at level 9",
+      "depends_on": "the deep aquifer"
+    },
+    {
+      "name": "WATER",
+      "how": "The drinking supply, drawn up, filtered, arriving pre-chilled by the deep rock.",
+      "runs_at": "12 C at the tap",
+      "depends_on": "the deep aquifer"
+    },
+    {
+      "name": "POWER",
+      "how": "Geothermal taps sunk into the same hot basalt the city hides from.",
+      "runs_at": "9.5 MW continuous",
+      "depends_on": "the basalt heat gradient"
+    },
+    {
+      "name": "AIR",
+      "how": "Passive stack ventilation — the day-night temperature swing at the surface pumps the shafts like a slow lung.",
+      "runs_at": "full exchange every 40 minutes",
+      "depends_on": "the surface shafts"
+    },
+    {
+      "name": "FOOD",
+      "how": "Fungal galleries on level 9, fed on organic fractions sieved from surface dust.",
+      "runs_at": "110 percent of need",
+      "depends_on": "surface dust deliveries"
+    }
   ],
   "hidden_dependency": "Cooling and drinking water both terminate in one aquifer — a coupling nobody ever drew on the same diagram.",
   "stress_event": {
@@ -55,10 +89,22 @@
     "Deferred-maintenance failure cascades, where a trivial scheduling slip compounds into system loss"
   ],
   "truth_label_spoken": true,
-  "canon_refs": ["REG-01", "SET-01", "ORG-01", "REG-02"],
-  "canon_additions": {"settlements": [], "organisms": [], "regions": []},
+  "canon_refs": [
+    "REG-01",
+    "SET-01",
+    "ORG-01",
+    "REG-02"
+  ],
+  "canon_additions": {
+    "settlements": [],
+    "organisms": [],
+    "regions": []
+  },
   "premise": "A buried city ran flawlessly for sixty-one years on five systems — two of which shared a resource nobody drew on the same diagram.",
-  "changing_variable": {"label": "CORE TEMP", "unit": "C"},
+  "changing_variable": {
+    "label": "CORE TEMP",
+    "unit": "C"
+  },
   "hero_prompt": "the heat-exchanger gallery of an underground city — a long basalt vault lined with pipe manifolds and finned coil banks, warm amber worklights, thin haze, a single technician with a hand lamp for scale, documentary photograph, 35mm, film grain, matte contrast",
   "forbidden_visuals": [
     "blue-white sunlight",
@@ -70,149 +116,276 @@
   ],
   "next_tease_topic": "The Convoy That Outran the Sun",
   "description": "Original speculative documentary. The place is fictional; the principles are real. Tehlmark Deep buried itself to survive a desert that cooks — then its own life support, fed by a maintenance slip and a mineral-eating film, turned the city into an oven it could not switch off. Case one of the Kelvara survey files. #speculativefiction #worldbuilding #documentary",
-  "tags": ["speculative documentary", "worldbuilding", "alien planet", "hard science fiction", "engineering failure", "biofouling", "underground city", "civilization stress test", "sci-fi documentary", "extremophiles"],
+  "tags": [
+    "speculative documentary",
+    "worldbuilding",
+    "alien planet",
+    "hard science fiction",
+    "engineering failure",
+    "biofouling",
+    "underground city",
+    "civilization stress test",
+    "sci-fi documentary",
+    "extremophiles"
+  ],
   "scenes": [
     {
       "n": 1,
       "title": "A city with nobody in it",
-      "narration": "Three hundred and forty metres under the worst desert on this world, there is a city with nobody in it. The doors were sealed from the outside — carefully, in good order, by the people who left. Nothing broke in. Nothing exploded. The machine that kept nine and a half thousand people alive simply began, very slowly, to cook them. The air in its deep galleries held thirty-one degrees for sixty-one years. This is the story of what happened when it stopped. The place is fictional. The principles are real.",
+      "narration": "Three hundred and forty metres beneath the worst desert on this world, there is a city with nobody in it. Nothing broke in. Nothing exploded. The machine that kept nine and a half thousand people alive — their food, their water, their cool air — is what killed the city. And every repair its engineers attempted made the heat worse. The place is fictional. The principles are real. For sixty-one years, the deep galleries held thirty-one degrees. Remember that number.",
       "visual_mode": "motion",
       "visual_role": "experience",
       "delivery": "hook",
-      "must_show": ["a sealed circular hatch in desert rock", "heat shimmer"],
-      "milestone": {"value": 31, "label": "CORE TEMP", "unit": "C"},
+      "must_show": [
+        "a sealed circular hatch in desert rock",
+        "heat shimmer"
+      ],
+      "milestone": {
+        "value": 31,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
       "ai_prompt": "a massive circular basalt hatch sealed into a cracked desert plateau, heat shimmer rising, fine ochre dust drifting past, dim warm amber late-afternoon sunlight, no people, documentary photograph, 35mm, slight film grain",
       "search_terms": []
     },
     {
       "n": 2,
       "title": "The Cinder Shelf",
-      "narration": "This is Kelvara. Fourth world of a small amber star. Its day runs thirty-one hours; its air is thin, and heat, once made, does not want to leave. And this is the Cinder Shelf — a basalt plateau where the afternoon lasts longer than a working shift, and the surface cooks anything that stands still on it. Nothing survives up here. Everything that lives on the Shelf lives underneath it. Thirty-one degrees, at depth, is not a comfort. It is a masterpiece.",
+      "narration": "This world is called Kelvara. Its day lasts thirty-one hours, and its air is thin — so heat, once made, is hard to get rid of. Remember that too. This is the Cinder Shelf: a desert plateau where the afternoon alone can kill. Nothing survives on the surface. So the people here did the sensible thing — they went under it. Thirty-one degrees, at depth, on this world? That is a masterpiece.",
       "visual_mode": "atlas",
       "visual_role": "explanation",
       "delivery": "calm",
-      "must_show": ["the atlas locator on the Cinder Shelf"],
-      "milestone": {"value": 31, "label": "CORE TEMP", "unit": "C"},
-      "atlas": {"region": "REG-01", "label": "THE CINDER SHELF — SURVEY GRID 7"},
+      "must_show": [
+        "the atlas locator on the Cinder Shelf"
+      ],
+      "milestone": {
+        "value": 31,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
+      "atlas": {
+        "region": "REG-01",
+        "label": "THE CINDER SHELF — SURVEY GRID 7"
+      },
       "search_terms": []
     },
     {
       "n": 3,
       "title": "Tehlmark Deep",
-      "narration": "Tehlmark Deep was cut in the survey's forty-first year. Eleven levels, straight down; the deepest gallery three hundred and forty metres below the hatch. Nine thousand four hundred people. Underground was not a hardship here — on a world with a weak magnetic shield, underground is simply where you live. Fungus galleries on level nine turned surface dust into food. Geothermal taps turned the rock's own heat into power. Thirty-one degrees, level nine, year after year.",
+      "narration": "Tehlmark Deep. Eleven floors cut straight down into the rock. Nine thousand four hundred people — miners first, then their families, then a generation that never once saw the surface at noon. Fungus farms on level nine turned dust into food. The hot rock below made their power. Children were born, schools ran, the night shift walked home under strings of amber lights. An ordinary town, in an extraordinary hole. And every year, the air held thirty-one degrees.",
       "visual_mode": "ai_image",
       "visual_role": "explanation",
       "delivery": "calm",
-      "must_show": ["a vast vertical shaft city interior", "a human figure for scale"],
-      "milestone": {"value": 31, "label": "CORE TEMP", "unit": "C"},
+      "must_show": [
+        "a vast vertical shaft city interior",
+        "a human figure for scale"
+      ],
+      "milestone": {
+        "value": 31,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
       "ai_prompt": "interior of a vast vertical city shaft carved through black basalt, eleven ringed galleries descending into warm darkness, strings of amber worklights, railed walkways, small human figures on a gantry for scale, thin haze, documentary photograph, 35mm, film grain",
       "search_terms": []
     },
     {
       "n": 4,
       "title": "Five systems, one page",
-      "narration": "Draw the city the way its engineers drew it. Five systems. Power: geothermal, tapped from the hot basalt below. Air: the long day itself pumps the shafts — warm air rising by day, sinking cool by night. Food: the fungal galleries. Cooling: a closed water loop that gathers heat from every level and rejects it into an aquifer five hundred metres beneath the lowest floor. And water: the drinking supply, drawn from that same aquifer, filtered, arriving pre-chilled. Five systems on one page. The diagram was correct. Every line on it was true. Thirty-one degrees.",
+      "narration": "Chapter one: the design — and the design was good. Five systems on one page. Power, from the hot rock below. Air, pumped by the swing between day and night at the surface. Food, from the fungus farms. Cooling: a loop of water that collects heat from every floor and dumps it into a cold underground lake — an aquifer — five hundred metres beneath the city. And drinking water, drawn from that same lake, already cold. Look at the page once more. Two of those five lines end at the same lake. Nobody thought that mattered. Thirty-one degrees.",
       "visual_mode": "schematic",
       "visual_role": "explanation",
       "delivery": "calm",
-      "must_show": ["the five-system dossier schematic", "two lines terminating at one aquifer node"],
-      "milestone": {"value": 31, "label": "CORE TEMP", "unit": "C"},
-      "schematic": {"kicker": "SYSTEM DIAGRAM", "headline": "Five systems, one page", "body": "Cooling rejects into the aquifer. The taps draw from it.", "value": 31, "suffix": " C", "label": "CORE TEMP", "delta": null, "delta_direction": "flat", "location": "TEHLMARK DEEP", "coordinates": "", "chapter": "THE MACHINE"},
+      "must_show": [
+        "the five-system dossier schematic",
+        "two lines terminating at one aquifer node"
+      ],
+      "milestone": {
+        "value": 31,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
+      "schematic": {
+        "kicker": "SYSTEM DIAGRAM",
+        "headline": "Five systems, one page",
+        "body": "Cooling rejects into the aquifer. The taps draw from it.",
+        "value": 31,
+        "suffix": " C",
+        "label": "CORE TEMP",
+        "delta": null,
+        "delta_direction": "flat",
+        "location": "TEHLMARK DEEP",
+        "coordinates": "",
+        "chapter": "THE MACHINE"
+      },
       "search_terms": []
     },
     {
       "n": 5,
       "title": "The best decision in the room",
-      "narration": "It is tempting to call that shared aquifer a mistake. It was not. It was the best decision in the room. One aquifer meant one pump gallery, one maintenance crew, one set of spares, and drinking water that came up cold without spending a single watt to chill it. An audit in year fifty called the design elegant — the report survives. The engineers of Tehlmark Deep were not fools. Given the same data, you would have signed the same page. Thirty-one degrees, and the afternoon overhead could not touch them.",
+      "narration": "It is tempting to call the shared lake a mistake. It was the best decision in the room. One lake meant one pump hall, one repair crew, one set of spares — and drinking water that came up cold without spending a single watt. An audit in year fifty called the design elegant; the report survives. These engineers were not fools. Given the same numbers, you would have signed the same page. Thirty-one degrees, and the desert overhead could not touch them.",
       "visual_mode": "ai_image",
       "visual_role": "explanation",
       "delivery": "calm",
-      "must_show": ["engineers at work in a pump gallery", "massive pipe manifolds"],
-      "milestone": {"value": 31, "label": "CORE TEMP", "unit": "C"},
+      "must_show": [
+        "engineers at work in a pump gallery",
+        "massive pipe manifolds"
+      ],
+      "milestone": {
+        "value": 31,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
       "ai_prompt": "a deep pump gallery carved in basalt, two engineers in worn coveralls consulting a paper diagram beside a massive pipe manifold, warm amber worklight pools, condensation on dark stone, documentary photograph, 35mm, film grain",
       "search_terms": []
     },
     {
       "n": 6,
       "title": "Eleven days",
-      "narration": "Year sixty-one. Dust season. The storms ran long, and the intake filters on the surface shafts — due for replacement every forty days — went eleven days over, because the replacement crew was repairing a crane. That is the entire trigger. No earthquake. No villain. A crane. Volcanic dust rode the night air down the shafts, through tired filters, and settled on the warm, wet coils of the cooling loop — on every level at once. And some of that dust was not mineral. By season's end, the loop's return line ran two degrees warm. Thirty-three.",
+      "narration": "Chapter two: the anomaly. Year sixty-one, dust season. The filters on the air shafts were due for replacement every forty days. They went eleven days over — the crew was busy repairing a crane. That is the whole trigger. A crane. Storm dust rode the night air down the shafts, through tired filters, and settled on the cooling loop's warm, wet pipework — on every floor at once. Most of that dust was rock. Some of it was alive. By season's end, the water returning from the city ran two degrees warm. Thirty-three.",
       "visual_mode": "ai_image",
       "visual_role": "experience",
       "delivery": "urgent",
-      "must_show": ["dust pouring down a ventilation shaft", "a clogged intake filter"],
-      "milestone": {"value": 33, "label": "CORE TEMP", "unit": "C"},
+      "must_show": [
+        "dust pouring down a ventilation shaft",
+        "a clogged intake filter"
+      ],
+      "milestone": {
+        "value": 33,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
       "ai_prompt": "fine ochre dust cascading down a huge stone ventilation shaft in low amber light, a clogged industrial intake filter caked with dark grime in the foreground, haze thick in the air, documentary photograph, 35mm, film grain",
       "search_terms": []
     },
     {
       "n": 7,
       "title": "The film",
-      "narration": "Under a hand lens, the culprit is almost nothing. A matte, rust-black crust, with a faint oily shimmer where it is growing. The field crews called it cinder film. It is not a plant, and it is not an animal. It is a colony that eats minerals — iron and sulphur, which is exactly what the Shelf's dust is made of — and it prospers between forty-five and seventy degrees. There is no malice in it. On an older world, engineers fight its cousins in cooling towers and call the problem biofouling. Here, it had just been handed the finest habitat on the planet. Thirty-four.",
+      "narration": "Under a lens, the culprit is almost nothing: a rust-black crust with an oily shimmer where it grows. Field crews called it cinder film. Not a plant, not an animal — a colony that eats iron and sulphur, which is exactly what this desert's dust is made of. And it loves warmth: it grows best between forty-five and seventy degrees, the exact temperatures inside a working cooling pipe. Engineers on our world fight its cousins in cooling towers; they call the problem biofouling. There is no malice in it. It had simply found the best home on the planet. Thirty-four.",
       "visual_mode": "ai_image",
       "visual_role": "explanation",
       "delivery": "reveal",
-      "must_show": ["rust-black crust on a metal coil", "faint iridescent bloom at its edge"],
-      "milestone": {"value": 34, "label": "CORE TEMP", "unit": "C"},
+      "must_show": [
+        "rust-black crust on a metal coil",
+        "faint iridescent bloom at its edge"
+      ],
+      "milestone": {
+        "value": 34,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
       "ai_prompt": "extreme close-up of a matte rust-black biofilm crust spreading across a finned metal cooling coil, a faint oily iridescent bloom along its growing edge, beads of condensation, warm amber worklight, macro documentary photograph, shallow depth of field, film grain",
       "search_terms": []
     },
     {
       "n": 8,
       "title": "A blanket half a millimetre thick",
-      "narration": "A heat exchanger works by letting heat cross a thin wall. The film is an insulator — a blanket half a millimetre thick, laid politely over every wall the city owned. In sixty days, the coils lost half their conductivity. The loop compensated the only way a loop can: pump more water, faster. But pumps are motors, and every motor is a heater. By spring, Tehlmark Deep was spending a fifth of its power just moving heat — and every joule of that spending became new heat to move. Thirty-seven.",
+      "narration": "Here is why a thin crust can kill a city. A cooling pipe works by letting heat pass through its wall. The film is a blanket — half a millimetre thick, laid over every pipe the city owned. In sixty days, half the cooling was gone. The loop did the only thing a loop can do: pump harder. But pumps are motors, and every motor makes heat. By spring, a fifth of the city's power went into moving heat — and every watt of it became new heat to move. Thirty-seven.",
       "visual_mode": "stat",
       "visual_role": "measurement",
       "delivery": "urgent",
-      "must_show": ["conductivity falling on a dossier chart"],
-      "milestone": {"value": 37, "label": "CORE TEMP", "unit": "C"},
-      "stat": {"value": 50, "suffix": "%", "label": "COIL CONDUCTIVITY LOST — 60 DAYS", "max": 100, "baseline": 0, "bars": [{"label": "DAY 0", "value": 100}, {"label": "DAY 60", "value": 50}]},
+      "must_show": [
+        "conductivity falling on a dossier chart"
+      ],
+      "milestone": {
+        "value": 37,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
+      "stat": {
+        "value": 50,
+        "suffix": "%",
+        "label": "COIL CONDUCTIVITY LOST — 60 DAYS",
+        "max": 100,
+        "baseline": 0,
+        "bars": [
+          {
+            "label": "DAY 0",
+            "value": 100
+          },
+          {
+            "label": "DAY 60",
+            "value": 50
+          }
+        ]
+      },
       "search_terms": []
     },
     {
       "n": 9,
       "title": "Farming it",
-      "narration": "Here is where the trap closes. The aquifer — the cold heart of everything — had been drinking the city's waste heat for sixty years, and it was no longer truly cold. Warm water grows film faster. Faster film means harder pumping. Harder pumping, warmer water. The engineers saw the whole shape of it within a week — and seeing changed nothing. Their power came from hot rock. The source could not be throttled, only wasted, and wasted heat went into the same water. The city was not fighting the film. The city was farming it. Forty-one.",
+      "narration": "Chapter three: the trap. The aquifer — the cold lake everything depended on — had been swallowing the city's waste heat for sixty years, and it was no longer truly cold. Now follow the circle. Warmer water grows the film faster. More film means less cooling. Less cooling means pumping harder. Pumping harder makes the water warmer still. Around and around, each turn feeding the next. The engineers saw the whole shape of it within a week. Seeing changed nothing — their power came from hot rock, and hot rock cannot be switched off. The city was not fighting the film any more. It was farming it. Forty-one.",
       "visual_mode": "motion",
       "visual_role": "experience",
       "delivery": "reveal",
-      "must_show": ["the exchanger gallery degraded", "black film advancing along pipes"],
-      "milestone": {"value": 41, "label": "CORE TEMP", "unit": "C"},
+      "must_show": [
+        "the exchanger gallery degraded",
+        "black film advancing along pipes"
+      ],
+      "milestone": {
+        "value": 41,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
       "ai_prompt": "the heat-exchanger gallery of an underground city in decline — a long basalt vault of pipe manifolds and coil banks now streaked with rust-black film, haze thickening, one technician with a hand lamp standing very still, warm amber worklights dimmed by vapour, documentary photograph, 35mm, film grain",
       "search_terms": []
     },
     {
       "n": 10,
       "title": "Two moves left",
-      "narration": "There were two moves left, and both were losing moves. Shut the loop down and starve the film — but this world's air is thin, and a sealed city does not cool. It soaks. A dead loop meant fifty degrees in the nurseries within two days. Or keep pumping, and feed it. They kept pumping. On day two hundred and eleven, the drinking water came up at forty-six degrees. On day two hundred and fourteen, the council ordered the walk-out: nine thousand four hundred people, eleven levels, up into the night. The last crew out sealed the doors. Forty-six.",
+      "narration": "Chapter four: the choice — and both doors led out of the same building. Shut the loop down and starve the film? In air this thin, a sealed city does not cool; it soaks. Fifty degrees in the nurseries within two days. Keep pumping, and feed the thing? They kept pumping. On day two hundred and eleven, the drinking water — from the same warm lake — came out of the taps at forty-six degrees. On day two hundred and fourteen, the council ordered the walk-out. Nine thousand four hundred people climbed eleven floors into the night. The last crew sealed the doors. Forty-six.",
       "visual_mode": "ai_image",
       "visual_role": "experience",
       "delivery": "urgent",
-      "must_show": ["a long line of people climbing a shaft stairway at night", "belongings carried by hand"],
-      "milestone": {"value": 46, "label": "CORE TEMP", "unit": "C"},
+      "must_show": [
+        "a long line of people climbing a shaft stairway at night",
+        "belongings carried by hand"
+      ],
+      "milestone": {
+        "value": 46,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
       "ai_prompt": "a long orderly line of people in dusty field clothes climbing a vast spiral stairway cut into black basalt at night, carrying bags and children, lit by strings of amber emergency lights, haze below them, seen from above, documentary photograph, 35mm, film grain",
       "search_terms": []
     },
     {
       "n": 11,
       "title": "Verdict",
-      "narration": "Tehlmark Deep held for sixty-one years and fell in two hundred and fourteen days. Verdict: failed. Cause: two systems that shared one aquifer, on a page nobody drew. The city is still down there — intact, dark, its galleries at fifty-one degrees when the last sensor died. The Shelf keeps it sealed.",
+      "narration": "Tehlmark Deep held for sixty-one years and fell in two hundred and fourteen days. Verdict: failed. Cause: two systems that shared one lake, on a page nobody drew. The city is still down there — intact, dark, fifty-one degrees when the last sensor died. The Shelf keeps it sealed.",
       "visual_mode": "verdict",
       "visual_role": "measurement",
       "delivery": "calm",
-      "must_show": ["the verdict card", "near-silence"],
-      "milestone": {"value": 51, "label": "CORE TEMP", "unit": "C"},
-      "card": {"kicker": "CASE 01 — TEHLMARK DEEP", "headline": "FAILED", "body": "Two systems shared one aquifer, on a page nobody drew."},
+      "must_show": [
+        "the verdict card",
+        "near-silence"
+      ],
+      "milestone": {
+        "value": 51,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
+      "card": {
+        "kicker": "CASE 01 — TEHLMARK DEEP",
+        "headline": "FAILED",
+        "body": "Two systems shared one aquifer, on a page nobody drew."
+      },
       "search_terms": []
     },
     {
       "n": 12,
       "title": "The survey moves on",
-      "narration": "The survey moved east after that, to the Shelf's edge — where the basalt walks down into a slow, warm sea whose tide arrives before its moon does. That file stays closed, for now. The next case is a city that refused to bury itself. It survives the long afternoon by never letting it arrive: a convoy, three kilometres long, that has been driving for ninety years. Next: The Convoy That Outran the Sun.",
+      "narration": "The survey moved east after that, to the Shelf's edge — where the basalt steps down into a slow, warm sea whose tide arrives before its moon does. That file stays closed, for now. The next case refused to bury itself: a city that survives the long afternoon by never letting it arrive. A convoy, three kilometres long, that has been driving for ninety years. Next: The Convoy That Outran the Sun.",
       "visual_mode": "ai_image",
       "visual_role": "experience",
       "delivery": "calm",
-      "must_show": ["a distant coastline at dusk from high altitude"],
-      "milestone": {"value": 51, "label": "CORE TEMP", "unit": "C"},
+      "must_show": [
+        "a distant coastline at dusk from high altitude"
+      ],
+      "milestone": {
+        "value": 51,
+        "label": "CORE TEMP",
+        "unit": "C"
+      },
       "ai_prompt": "aerial view at dusk of a dark basalt plateau descending in giant steps to a warm shallow sea, faint bioluminescent shimmer far out on the water, dim amber horizon light, ochre haze, documentary photograph from high altitude, 35mm, film grain",
       "search_terms": []
     }
