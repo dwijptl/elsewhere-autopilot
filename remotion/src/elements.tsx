@@ -360,11 +360,20 @@ const CaptionChunk: React.FC<{
         borderLeft: `${8 * s}px solid ${style.accent}`,
       }}>{kineticWords(60 * captionScale, 'white')}</div>
     ) : v === 'minimal' ? (
+      // Sentence-level, smaller, calm — a premium documentary subtitle, not
+      // a Short. The accent is RESERVED for numbers and measurements, so
+      // amber keeps its meaning: when something turns amber, it matters.
       <div style={{
-        color: BRAND.text, fontSize: 50 * captionScale * s, fontWeight: 600, letterSpacing: 0.4,
-        textAlign: 'center', lineHeight: 1.4, textShadow: '0 3px 18px rgba(0,0,0,0.9)',
-        borderBottom: `${3 * s}px solid ${style.accent}`, paddingBottom: 8 * s,
-      }}>{text}</div>
+        color: BRAND.text, fontSize: 42 * captionScale * s, fontWeight: 600, letterSpacing: 0.4,
+        textAlign: 'center', lineHeight: 1.45, textShadow: '0 3px 18px rgba(0,0,0,0.95)',
+      }}>
+        {text.split(/\s+/).filter(Boolean).map((w, i) => (
+          <span key={i} style={{
+            color: /[\d%°]/.test(w) ? style.accent : BRAND.text,
+            fontWeight: /[\d%°]/.test(w) ? 800 : 600,
+          }}>{w}{' '}</span>
+        ))}
+      </div>
     ) : v === 'chip' ? (
       // Premium high-contrast chip: calm dark scrim + white karaoke words,
       // accent only on the active word and a thin rule. A solid accent box

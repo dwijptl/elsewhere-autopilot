@@ -112,7 +112,13 @@ jobs:
             draft=(--draft)
             title="⚠️ REVIEW — $title"
           fi
+          # work.zip = every generated asset + props.json. Attaching it makes
+          # RE-EDITS FREE: rerender.yml re-renders from this zip with new
+          # renderer code and zero generation spend. Editing judgment is the
+          # constraint now — never pay twice for the same assets.
+          (cd "$OUTDIR" && zip -q -r work.zip work)
           gh release create "video-$STAMP" \
+            "$OUTDIR/work.zip" \
             "$OUTDIR/final.mp4" \
             "$OUTDIR/captions.srt" \
             "$OUTDIR/thumbnail.jpg" \

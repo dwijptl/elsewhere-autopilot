@@ -1,0 +1,76 @@
+name: Re-render (free)
+
+# Re-renders an existing episode from its release's work.zip — new renderer
+# code, SAME generated assets, ZERO generation cost. This exists because the
+# constraint on this channel is editing judgment, not generation spend
+# (learned on the pilot: $6 of assets, three renders to get the edit right).
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to re-render (e.g. video-2026-07-14_0021)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rerender
+  cancel-in-progress: false
+
+jobs:
+  rerender:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout (current renderer code)
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache Remotion node_modules
+        uses: actions/cache@v4
+        with:
+          path: remotion/node_modules
+          key: remotion-${{ runner.os }}-${{ hashFiles('remotion/package-lock.json') }}
+
+      - name: Node dependencies (Remotion)
+        working-directory: remotion
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck renderer
+        working-directory: remotion
+        run: npx tsc --noEmit
+
+      - name: Download work.zip from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          mkdir -p rerender
+          gh release download "$TAG" --pattern work.zip --dir rerender
+          (cd rerender && unzip -q work.zip)
+          test -f rerender/work/props.json
+
+      - name: Re-render
+        working-directory: remotion
+        run: |
+          npx remotion browser ensure
+          npx remotion render src/index.ts Main ../rerender/final.mp4 \
+            --props ../rerender/work/props.json \
+            --public-dir ../rerender/work \
+            --concurrency 2 --log warn
+
+      - name: Attach the new cut to the same release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          stamp=$(date -u +%H%M)
+          cp rerender/final.mp4 "rerender/final_recut_${stamp}.mp4"
+          gh release upload "$TAG" "rerender/final_recut_${stamp}.mp4"
+          echo "Attached final_recut_${stamp}.mp4 to $TAG"

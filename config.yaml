@@ -66,7 +66,7 @@ video:
   bitrate: "6000k"
   crossfade: 0.4
   max_shot_seconds: 5
-  outro_seconds: 4
+  outro_seconds: 2         # brand card is a signature, not a scene (was 4)
 
 longform_quality:
   visual_beats:
@@ -120,6 +120,7 @@ llm:
 brand:
   name: "ELSEWHERE"        # working name; final handle check pending
   tagline: "Field documentaries from a world that never was."
+  watermark: "brand/watermark.png"   # in-video corner mark (generate_brand.py)
   watermark_opacity: 0.07
 
 render:
@@ -219,7 +220,8 @@ motion_library:
 
 captions:
   enabled: true
-  max_chars: 34
+  max_chars: 56            # sentence-level chunks — documentary subtitles,
+                           # not Short-style word karaoke (was 34)
   font_size: 54
   align: true
   align_window_seconds: 25

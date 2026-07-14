@@ -169,6 +169,26 @@ const CameraRig: React.FC<{
   return <AbsoluteFill style={{transform}}>{children}</AbsoluteFill>;
 };
 
+const TruthChip: React.FC<{text: string; accent: string}> = ({text, accent}) => {
+  const frame = useCurrentFrame();
+  const {fps, width} = useVideoConfig();
+  const s = width / 1920;
+  const inO = interpolate(frame, [0, Math.round(0.5 * fps)], [0, 1],
+    {extrapolateRight: 'clamp'});
+  const outO = interpolate(frame, [Math.round(6 * fps), Math.round(7 * fps)],
+    [1, 0], {extrapolateLeft: 'clamp'});
+  return (
+    <div style={{
+      position: 'absolute', top: 26 * s, right: 30 * s,
+      maxWidth: 560 * s, opacity: Math.min(inO, outO),
+      background: 'rgba(28,24,20,0.78)', borderLeft: `${3 * s}px solid ${accent}`,
+      padding: `${8 * s}px ${14 * s}px`, borderRadius: 4 * s,
+      color: '#EFE4D2', fontSize: 21 * s, lineHeight: 1.35,
+      fontFamily: 'Inter, sans-serif', letterSpacing: 0.3, textAlign: 'left',
+    }}>{text}</div>
+  );
+};
+
 export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
   const fps = m.fps;
   const {durationInFrames} = useVideoConfig();
@@ -318,6 +338,14 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
       <TransitionSeries>{items}</TransitionSeries>
       <CaptionsLayer captions={m.captions} style={style}
         compactRanges={overlayRanges} compactYFrac={0.84} sizeBoost={1.15} />
+      {(m as any).truthLabel ? (
+        // The disclosure is SEEN, not just spoken — top-right, first ~7s,
+        // small enough to be honest without being an apology.
+        <Sequence from={Math.round(0.6 * fps)}
+          durationInFrames={Math.round(7 * fps)}>
+          <TruthChip text={String((m as any).truthLabel)} accent={style.accent} />
+        </Sequence>
+      ) : null}
       <CinematicOverlay />
       {style.hud ? (
         <TelemetryHUD starts={m.scenes.map((sc) => sc.start ?? 0)}

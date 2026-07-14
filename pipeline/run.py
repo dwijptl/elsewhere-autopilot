@@ -448,6 +448,22 @@ def main() -> None:
     # 3b) hero motion — Wan i2v animates 1-2 flagged stills; fail-open ------
     wan_motion.animate_heroes(scenes, cfg, workdir)
 
+    # 3c) EXPORT GATE — no silent slideshows. A narration scene longer than
+    # 3s with nothing to show is an unfinished video, and shipping it teaches
+    # viewers the channel is broken. Overlay-held scenes (schematic, verdict,
+    # kinetic, stat, atlas) carry their own visual and are exempt.
+    for sc in scenes:
+        carries_own_visual = (
+            sc.get("visual_mode") in ("glass", "card", "kinetic", "stat")
+            or sc.get("verdict_card")
+            or (sc.get("visual_mode") == "map" and sc.get("map_render")))
+        if (float(sc.get("audio_duration", 0)) > 3.0 and not sc.get("assets")
+                and not carries_own_visual):
+            raise RuntimeError(
+                f"EXPORT GATE: scene {sc.get('n')} runs "
+                f"{sc.get('audio_duration', 0):.1f}s with no visual asset and "
+                f"no overlay. Refusing to export an unfinished video.")
+
     # 4) captions ------------------------------------------------------------
     events, srt = captions_mod.build_captions(scenes, cfg["captions"]["max_chars"])
     with open(os.path.join(outdir, "captions.srt"), "w", encoding="utf-8") as f:
@@ -524,6 +540,12 @@ def main() -> None:
         "captions": [{"start": round(s, 3), "end": round(e, 3), "text": t}
                      for s, e, t in events
                      if bool(cfg["captions"].get("enabled", True))],
+        # the disclosure is shown on screen in the first seconds, not only
+        # spoken — honesty is a brand asset on this channel
+        "truthLabel": (canon_mod.load(REPO_ROOT).get("planet", {})
+                       .get("truth_label",
+                            "Original speculative documentary. The place is "
+                            "fictional; the principles are real.")),
         # the case-level spine (the Verdict card and the Schematic read this)
         "verdict": script.get("verdict", "FAILED"),
         "verdictReason": script.get("verdict_reason", ""),
