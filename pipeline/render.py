@@ -45,6 +45,10 @@ def _ken_burns(img_path: str, duration: float, w: int, h: int, zoom_in: bool):
 
 def _scene_visual(assets: list[dict], duration: float, cfg: dict, rng: random.Random):
     w, h, max_shot = cfg["video"]["width"], cfg["video"]["height"], cfg["video"]["max_shot_seconds"]
+    assets = [a for a in (assets or []) if a.get("path") and os.path.exists(a["path"])]
+    if not assets:  # graphics/map scene or everything vanished: dark plate
+        from moviepy import ColorClip
+        return ColorClip(size=(w, h), color=(8, 6, 15)).with_duration(duration)
     parts, remaining, i = [], duration, 0
     zoom_in = rng.random() < 0.5
     while remaining > 0.05:

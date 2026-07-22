@@ -31,7 +31,7 @@ import sfx as sfx_mod               # noqa: E402
 import tts as tts_mod               # noqa: E402
 import vision_qc                    # noqa: E402
 import visual_beats as visual_beats_mod  # noqa: E402
-from run import _impact_start, _visual_beat_manifest  # noqa: E402
+from run import _impact_start, _validate_scene_assets, _visual_beat_manifest  # noqa: E402
 import style_packs                  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -287,6 +287,7 @@ def main() -> None:
             print(f"[sync] scene {sc['n']}: {sc.get('visual_mode')} graphic "
                   f"word-synced to +{sc['impact_start']:.2f}s")
 
+    _validate_scene_assets(scenes)
     manifest = {"manifest": {
         "fps": fps, "width": 1080, "height": 1920,
         "xfadeFrames": max(int(round(xfade * fps)), 1),
