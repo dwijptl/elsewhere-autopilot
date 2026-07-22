@@ -1215,15 +1215,19 @@ Script rules:
             # warning) and run.py drafts the release (retention.gate).
             for _pass in range(2):
                 wc = _word_count(script)
-                if wc >= int(words * 0.88):
+                n_scenes = len(script.get("scenes", []))
+                if wc >= int(words * 0.88) and n_scenes >= int(v["scenes_min"]):
                     break
-                print(f"[script] undershoot ({wc}/{words} words) — "
+                print(f"[script] undershoot ({wc}/{words} words, "
+                      f"{n_scenes}/{v['scenes_min']} scenes) — "
                       f"expansion pass {_pass + 1}")
-                exp = f"""The draft below runs {wc} spoken words but must run
-{int(words * 0.95)}-{int(words * 1.05)} words. Expand the THINNEST scenes with
-concrete, specific material — mechanisms, named places, numbers, consequences
-— never filler, never repetition. Keep the same JSON schema, scene count,
-visual modes and every non-narration field unchanged.
+                exp = f"""The draft below runs {wc} spoken words in {n_scenes}
+scenes but must run {int(words * 0.95)}-{int(words * 1.05)} words across AT
+LEAST {v['scenes_min']} scenes. Expand by SPLITTING the densest scenes into
+more scenes (each split scene gets its own milestone year, visual mode and
+concrete material — mechanisms, named places, numbers, consequences) and by
+deepening thin scenes. Never filler, never repetition. Keep the same JSON
+schema and every non-narration field consistent.
 {_lang_rules(cfg)}
 Return ONLY the full revised JSON.
 

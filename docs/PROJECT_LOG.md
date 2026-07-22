@@ -40,8 +40,13 @@ CANNOT die mid-job. Current tier: **12 min** (proven ~2.5-3h total vs
 5.5h job limit on free runners). Next tier (30-60 min) requires
 SEGMENTED RENDERING — split the composition into N frame-range chunks,
 render each in its own matrix job (each far under the limit), concat
-with ffmpeg in a final job. Build + validate that before raising
-target_minutes past ~20. Research depth is already unlimited: the
+with ffmpeg in a final job. SHIPPED 2026-07-22 as the Make Long Video
+workflow: prepare job (checkpoint.pkl before pixels) -> 4 parallel
+frame-range chunk jobs (render_chunk.py, h264+PCM mkv) -> finish job
+(run_long_finish.py: sample-accurate concat -> final.mp4 -> resumed
+finalize). Default 22 min via the `minutes` dispatch input; single-job
+Make Video stays the proven path for <=12 min. If a chunk fails,
+"Re-run failed jobs" reuses the prepare artifact. Research depth is already unlimited: the
 grounded dossier (pipeline/research.py) is built before writing and the
 script must cover ALL of it (no-skipping rule) — depth lives inside the
 runtime, and runtime grows only with infra.

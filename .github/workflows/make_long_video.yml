@@ -1,0 +1,204 @@
+name: Make Long Video
+
+# Segmented rendering for 20-25 minute episodes. A single job cannot render
+# this length inside GitHub's 6h cap, so the pipeline splits:
+#   prepare  -> research/script/voice/assets/manifest  (~1-1.5h)
+#   render   -> 4 parallel jobs, one frame-range chunk each (~1.5-2h)
+#   finish   -> lossless concat + mastering/audits/thumbnails/release
+# No job can hit the timeout — the won't-die-mid-run rule, by construction.
+# If one chunk fails, use "Re-run failed jobs": prepare's artifact is reused.
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Optional: force a specific topic (leave empty for auto)"
+        required: false
+        default: ""
+      minutes:
+        description: "Target length in minutes (8-30)"
+        required: false
+        default: "22"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: make-long-video
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    outputs:
+      stamp: ${{ steps.pipeline.outputs.stamp }}
+      dir: ${{ steps.pipeline.outputs.dir }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: System dependencies (incl. Devanagari fonts for Hindi text)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core fonts-noto-core
+      - name: Cache Kokoro TTS model (fallback voice, downloaded only if used)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/kokoro
+          key: kokoro-model-v1.0
+      - name: Python dependencies
+        run: pip install -r requirements.txt
+      - name: Prepare stage (research -> script -> voice -> assets -> manifest)
+        id: pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
+          SARVAM_SPEAKER: ${{ secrets.SARVAM_SPEAKER }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FORCED_TOPIC: ${{ github.event.inputs.topic }}
+          LONG_TARGET_MINUTES: ${{ github.event.inputs.minutes }}
+          PIPELINE_STAGE: prepare
+        run: python pipeline/run.py
+      - name: Upload prepared workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepared-${{ steps.pipeline.outputs.stamp }}
+          path: ${{ steps.pipeline.outputs.dir }}
+          retention-days: 2
+          if-no-files-found: error
+
+  render:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [0, 1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download prepared workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-${{ needs.prepare.outputs.stamp }}
+          path: ${{ needs.prepare.outputs.dir }}
+      - name: Set up Node (for the Remotion renderer)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Cache Remotion node_modules (includes headless Chrome)
+        uses: actions/cache@v4
+        with:
+          path: remotion/node_modules
+          key: remotion-${{ hashFiles('remotion/package.json') }}
+      - name: Node dependencies (Remotion)
+        working-directory: remotion
+        run: npm install --no-audit --no-fund
+      - name: Render chunk ${{ matrix.chunk }} of 4
+        run: python pipeline/render_chunk.py "${{ needs.prepare.outputs.dir }}" ${{ matrix.chunk }} 4
+      - name: Upload chunk
+        uses: actions/upload-artifact@v4
+        with:
+          name: chunk-${{ needs.prepare.outputs.stamp }}-${{ matrix.chunk }}
+          path: ${{ needs.prepare.outputs.dir }}/chunk_*.mkv
+          retention-days: 2
+          if-no-files-found: error
+
+  finish:
+    needs: [prepare, render]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: System dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fonts-noto-core
+      - name: Set up Node (for the Remotion thumbnail stills)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Cache Remotion node_modules (includes headless Chrome)
+        uses: actions/cache@v4
+        with:
+          path: remotion/node_modules
+          key: remotion-${{ hashFiles('remotion/package.json') }}
+      - name: Node dependencies (Remotion)
+        working-directory: remotion
+        run: npm install --no-audit --no-fund
+      - name: Python dependencies
+        run: pip install -r requirements.txt
+      - name: Download prepared workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-${{ needs.prepare.outputs.stamp }}
+          path: ${{ needs.prepare.outputs.dir }}
+      - name: Download rendered chunks
+        uses: actions/download-artifact@v4
+        with:
+          pattern: chunk-${{ needs.prepare.outputs.stamp }}-*
+          path: ${{ needs.prepare.outputs.dir }}
+          merge-multiple: true
+      - name: Concat + finalize (mastering, audits, thumbnails, metadata)
+        id: pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: python pipeline/run_long_finish.py "${{ needs.prepare.outputs.dir }}"
+      - name: Publish release (your dated "folder")
+        if: ${{ always() && steps.pipeline.outputs.stamp != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAMP: ${{ steps.pipeline.outputs.stamp }}
+          OUTDIR: ${{ steps.pipeline.outputs.dir }}
+          VTITLE: ${{ steps.pipeline.outputs.title }}
+          DRAFT_RELEASE: ${{ steps.pipeline.outputs.draft_release }}
+        run: |
+          draft=()
+          title="$STAMP — $VTITLE"
+          if [ "$DRAFT_RELEASE" = "true" ]; then
+            draft=(--draft)
+            title="⚠️ REVIEW — $title"
+          fi
+          extra=()
+          [ -f "$OUTDIR/beats.json" ] && extra+=("$OUTDIR/beats.json")
+          [ -f "$OUTDIR/research.json" ] && extra+=("$OUTDIR/research.json")
+          for t in "$OUTDIR"/thumbnail_*.jpg; do
+            [ -f "$t" ] && extra+=("$t")
+          done
+          gh release create "video-$STAMP" \
+            "$OUTDIR/final.mp4" \
+            "$OUTDIR/captions.srt" \
+            "$OUTDIR/thumbnail.jpg" \
+            "$OUTDIR/script.json" \
+            "$OUTDIR/run_summary.json" \
+            "$OUTDIR/quality_report.json" \
+            "${extra[@]}" \
+            --title "$title" \
+            --notes-file "$OUTDIR/metadata.md" \
+            "${draft[@]}"
+      - name: Save topic history + asset usage log
+        if: ${{ always() && steps.pipeline.outputs.stamp != '' }}
+        run: |
+          git config user.name "faceless-autopilot"
+          git config user.email "actions@users.noreply.github.com"
+          git add topics_done.txt assets_used.json
+          git add styles_used.txt styles_used_shorts.txt 2>/dev/null || true
+          git add calibration.json analytics/beats 2>/dev/null || true
+          git commit -m "log long run (${{ steps.pipeline.outputs.stamp }})" || echo "nothing to commit"
+          git pull --rebase origin ${{ github.ref_name }} || true
+          git push

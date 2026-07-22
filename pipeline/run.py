@@ -436,11 +436,299 @@ def _visual_beat_manifest(scene: dict) -> list[dict]:
     return result
 
 
+def _finalize_delivery(ck: dict) -> None:
+    """Everything after the pixels exist: mastering, audits, thumbnails,
+    metadata, history logs. Runs in-process for the single-job path, or from
+    a checkpoint (pipeline/run_long_finish.py) after segmented rendering."""
+    outdir = ck["outdir"]
+    workdir = ck["workdir"]
+    cfg = ck["cfg"]
+    gemini_key = ck["gemini_key"]
+    script = ck["script"]
+    scenes = ck["scenes"]
+    manifest = ck["manifest"]
+    manifest_path = ck["manifest_path"]
+    thumb_ai = ck["thumb_ai"]
+    fact_report = ck["fact_report"]
+    voice_fallback = ck["voice_fallback"]
+    r_gate = ck["r_gate"]
+    story_failed = ck["story_failed"]
+    runtime_ok = ck["runtime_ok"]
+    retention_report = ck["retention_report"]
+    word_budget = ck["word_budget"]
+    total_speech = ck["total_speech"]
+    target_s = ck["target_s"]
+    measured_wpm = ck["measured_wpm"]
+    realized_wpm = ck["realized_wpm"]
+    style = ck["style"]
+    stamp = ck["stamp"]
+    topic = ck["topic"]
+    used_engine = ck["used_engine"]
+    motion_seed = ck["motion_seed"]
+    cta_event = ck["cta_event"]
+    sfx_events = ck["sfx_events"]
+    caption_status = ck["caption_status"]
+    final_path = os.path.join(outdir, "final.mp4")
+    postprocess.master_delivery(final_path, cfg)
+    duration = probe_duration(final_path)
+    quality_report = quality_mod.audit_delivery(
+        final_path, manifest["manifest"], cfg,
+        os.path.join(outdir, "quality_report.json"))
+    try:  # hero telemetry travels with the audit (docs/HERO_SHOTS_SPEC.md)
+        quality_report.setdefault("metrics", {}).update(hero_shots.metrics())
+        with open(os.path.join(outdir, "quality_report.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(quality_report, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+    # G11 — one-vision-call contact-sheet audit of the ACTUAL render
+    render_audit = vision_qc.audit_render(
+        final_path, cfg, gemini_key,
+        forbidden=script.get("forbidden_visuals") or [],
+        out_path=os.path.join(outdir, "render_audit.json"))
+    # a skipped/errored audit is INDETERMINATE, not clean — when the owner
+    # requires a completed audit, absence of review blocks publication
+    if (cfg.get("qc", {}).get("render_audit_required", False)
+            and str(render_audit.get("status", "skipped")) != "ok"):
+        render_audit["publishable"] = False
+        render_audit.setdefault("issues", []).append(
+            {"severity": "serious",
+             "note": f"render audit did not complete "
+                     f"(status: {render_audit.get('status')}) and "
+                     "qc.render_audit_required is enabled"})
+
+    # 7) thumbnail ---------------------------------------------------------------
+    thumb_path = os.path.join(outdir, "thumbnail.jpg")
+    try:
+        thumbnail_remotion(manifest_path, workdir, thumb_path)
+        assert os.path.getsize(thumb_path) > 10_000
+    except Exception as e:
+        print(f"[thumb] Remotion still failed ({e}) -> PIL fallback")
+        import thumbnail as thumb_mod
+        thumb_assets = ([{"path": os.path.join(workdir, "thumb_ai.png"),
+                          "kind": "image"}] if thumb_ai else []) + scenes[0]["assets"]
+        thumb_mod.make_thumbnail(thumb_assets, script["thumb_text"], thumb_path)
+
+    # 7b) thumbnail variants — same hero, alternate text, for YouTube's native
+    # Test & Compare (upload all; YouTube picks the winner by watch-time share)
+    try:
+        seen = {manifest["manifest"]["thumbText"]}
+        letter = ord("b")
+        for opt in (script.get("thumb_options") or [])[:3]:
+            text = str(opt.get("text", "")).strip()[:24]
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            variant = json.loads(json.dumps(manifest, ensure_ascii=False))
+            variant["manifest"]["thumbText"] = text
+            vpath = os.path.join(workdir, f"props_thumb_{chr(letter)}.json")
+            with open(vpath, "w", encoding="utf-8") as f:
+                json.dump(variant, f, ensure_ascii=False)
+            vout = os.path.join(outdir, f"thumbnail_{chr(letter)}.jpg")
+            thumbnail_remotion(vpath, workdir, vout)
+            print(f"[thumb] Test & Compare variant: {os.path.basename(vout)} "
+                  f"({text})")
+            letter += 1
+    except Exception as exc:
+        print(f"[thumb] variants skipped ({exc})")
+
+    # 8) metadata ----------------------------------------------------------------
+    n_ai = sum(1 for sc in scenes for a in sc["assets"] if a.get("ai"))
+    voice_line = ck.get("voice_line") or tts_mod.ENGINE_USED or "unknown"
+    fact_line = factcheck.markdown(fact_report)
+    # gate modes: false = advisory · high_risk = block on unsupported
+    # high-risk claims only · true/all = block on any unsupported claim
+    gate_mode = str(cfg.get("factcheck", {}).get("gate", False)).strip().lower()
+    if gate_mode in ("true", "1", "all"):
+        fact_requires_review = fact_report.get("unsupported", 0) > 0
+    elif gate_mode == "high_risk":
+        fact_requires_review = bool(fact_report.get("high_risk_unsupported"))
+    else:
+        fact_requires_review = False
+    quality_requires_review = (
+        bool(cfg.get("longform_quality", {}).get("render_qc", {}).get("gate", False))
+        and not quality_report.get("passed", False))
+    audit_requires_review = not render_audit.get("publishable", True)
+    # story audit + runtime contract (retention.gate: off | draft | block)
+    retention_requires_review = (
+        r_gate not in ("off", "false", "0", "")
+        and (story_failed or not runtime_ok))
+    draft_release = (voice_fallback or fact_requires_review
+                     or quality_requires_review or audit_requires_review
+                     or retention_requires_review)
+    status_voice = "⚠️ FALLBACK — DO NOT PUBLISH" if voice_fallback else "OK (cloned)"
+    status_fact = (f"⚠️ REVIEW CLAIMS ({fact_report.get('unsupported', 0)} unsupported)"
+                   if fact_requires_review else fact_report.get("status", "unknown"))
+    status_quality = ("OK" if quality_report.get("passed") else
+                      f"⚠️ REVIEW ({len(quality_report.get('errors', []))} errors)")
+    voice_banner = ("> ⚠️ **VOICE FALLBACK — DO NOT PUBLISH.** This run used Kokoro, "
+                    "not your cloned Sarvam voice. Re-run when Sarvam is available.\n\n"
+                    if voice_fallback else "")
+    fact_banner = ("> ⚠️ **UNSUPPORTED HIGH-RISK CLAIMS — DO NOT PUBLISH** until "
+                   "verified/removed: "
+                   + "; ".join(fact_report.get("high_risk_unsupported", [])[:3])
+                   + "\n\n" if fact_requires_review else "")
+    audit_banner = ("> ⚠️ **RENDER AUDIT — DO NOT PUBLISH:** "
+                    + "; ".join(str(i.get("note", "")) for i in
+                                render_audit.get("issues", [])
+                                if str(i.get("severity", "")).lower() == "serious")[:200]
+                    + "\n\n" if audit_requires_review else "")
+    status_audit = ("⚠️ REVIEW" if audit_requires_review
+                    else render_audit.get("status", "skipped"))
+    status_retention = (
+        "⚠️ REVIEW ("
+        + "; ".join(([f"{len(retention_report.get('violations', []))} story "
+                      "violations"] if not retention_report.get("passed", True)
+                     else [])
+                    + ([f"words {word_budget.get('actual')}/"
+                        f"{word_budget.get('target')}"]
+                       if not word_budget.get("ok", True) else [])
+                    + ([f"runtime {total_speech / 60:.1f}/"
+                        f"{target_s / 60:.1f} min"] if not runtime_ok else []))
+        + ")" if retention_requires_review else "OK")
+    retention_banner = (
+        "> ⚠️ **STORY/RUNTIME AUDIT — REVIEW BEFORE PUBLISHING:** "
+        + "; ".join(v["detail"][:90] for v in
+                    retention_report.get("violations", [])[:3])
+        + "\n\n" if retention_requires_review else "")
+    meta = f"""## {script['title']}
+
+{voice_banner}{fact_banner}{audit_banner}{retention_banner}**Reliability:** Voice: {status_voice} | Captions: {caption_status} | Fact-check: {status_fact} | Quality: {status_quality} | Render audit: {status_audit} | Story: {status_retention}
+
+**Duration:** {duration / 60:.1f} min · **Scenes:** {len(scenes)} · **Style:** {style} ·
+**AI visuals:** {n_ai} · **Run:** {stamp} · **Renderer:** {used_engine} ·
+**Voice:** {voice_line}
+
+### Description (paste into YouTube — chapters + CTA + hashtags included)
+
+{build_description(script, is_short=False, chapters=_chapters_block(scenes))}
+
+### Tags
+
+{', '.join(_india_tags(script.get('tags', []), is_short=False))}
+
+### Title & thumbnail alternates (pick your favourite before uploading)
+
+{chr(10).join(f"{i + 1}. {t}" for i, t in enumerate(script.get('title_options') or [])) or "_none generated_"}
+
+{chr(10).join(f"- **{o.get('text', '')}** — {o.get('concept', '')}" for o in (script.get('thumb_options') or []))}
+
+### Reliability report
+
+{fact_line}
+
+### Checklist before uploading
+
+- [ ] Watch the video once — you are the editor of record
+- [ ] Spot-check any specific numbers/claims in the narration
+- [ ] SCHEDULE the publish for 16:00–17:30 IST — Hindi long-form viewing
+      peaks 6–8 PM IST; going live 2-3h early lets YouTube index + test it
+- [ ] Set the video language to **Hindi** in YouTube Studio (Details → Video language)
+- [ ] Upload ALL thumbnails (thumbnail.jpg + thumbnail_b/c.jpg if present) via
+      Studio's **Test & Compare** — YouTube picks the winner by watch-time
+- [ ] If your music track is CC-BY, add the artist credit to the description
+- [ ] Upload `captions.srt` in YouTube Studio → Subtitles (language: Hindi)
+- [ ] Occasionally drop fresh Studio analytics CSVs into analytics/ so the
+      channel keeps learning
+
+*Assets: Pexels + Gemini AI images (commercial-safe). Voice: {voice_line}
+(your cloned Sarvam voice; Kokoro Apache-2.0 fallback). Motion design:
+Remotion. Brand: BHARAT KE RAHASYA (रहस्यलोक).*
+"""
+    with open(os.path.join(outdir, "metadata.md"), "w", encoding="utf-8") as f:
+        f.write(meta)
+
+    with open(os.path.join(outdir, "run_summary.json"), "w", encoding="utf-8") as f:
+        json.dump({"draft_release": draft_release, "voice_fallback": voice_fallback,
+                   "voice": voice_line, "captions": caption_status,
+                   "factcheck": fact_report,
+                   "quality": quality_report,
+                   "render_audit": render_audit,
+                   "retention": {
+                       "report": retention_report,
+                       "word_budget": word_budget,
+                       "runtime": {"target_s": round(target_s, 1),
+                                   "actual_s": round(total_speech, 1),
+                                   "ok": runtime_ok},
+                       "wpm_measured_used": measured_wpm,
+                       "wpm_realized": realized_wpm,
+                       "gate": r_gate,
+                   },
+                   "motion_library": {
+                       "seed": motion_seed,
+                       "cta": cta_event,
+                       "scene_variants": [sc.get("motion", {}) for sc in scenes],
+                       "sound_events": len(sfx_events),
+                   }}, f, indent=2, ensure_ascii=False)
+
+    # beat-timestamp map — lets future analytics map retention dips to the
+    # exact scene, narrative role, visual mode and asset choice on screen.
+    # A copy is committed to analytics/beats/ so the weekly learnings digest
+    # can join it against exported audience-retention CSVs.
+    beats_payload = [{"n": sc["n"], "title": sc.get("title", ""),
+                      "start": round(sc["start"], 2),
+                      "end": round(sc["start"] + sc["audio_duration"], 2),
+                      "visualMode": sc.get("visual_mode", "broll"),
+                      "visualRole": sc.get("visual_role", ""),
+                      "narrativeRole": sc.get("narrative_role", ""),
+                      "rewardType": (sc.get("reward") or {}).get("type", ""),
+                      "rewardStrength": (sc.get("reward") or {}).get("strength", 0),
+                      "questionOut": sc.get("question_out", ""),
+                      "delivery": sc.get("delivery", "calm"),
+                      "assets": [f"{a['kind']}:{'ai' if a.get('ai') else 'stock'}"
+                                 for a in sc["assets"]]}
+                     for sc in scenes]
+    with open(os.path.join(outdir, "beats.json"), "w", encoding="utf-8") as f:
+        json.dump(beats_payload, f, indent=2, ensure_ascii=False)
+    try:
+        beats_dir = os.path.join(REPO_ROOT, "analytics", "beats")
+        os.makedirs(beats_dir, exist_ok=True)
+        with open(os.path.join(beats_dir, f"{stamp}.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"stamp": stamp, "title": script["title"],
+                       "style": style,
+                       "retention_plan": script.get("retention_plan", {}),
+                       "beats": beats_payload}, f, indent=2,
+                      ensure_ascii=False)
+    except Exception as exc:
+        print(f"[beats] analytics copy skipped ({exc})")
+
+    script_gen.log_topic_done(topic, os.path.join(REPO_ROOT, "topics_done.txt"))
+    style_packs.record_use(style, REPO_ROOT, is_short=False)
+    # No automatic next-episode lock: the owner either adds a manual
+    # "NEXT: <topic>" line to topics_done.txt or lets pick_topic choose.
+
+    gh_out = os.environ.get("GITHUB_OUTPUT")
+    if gh_out:
+        safe_title = script["title"].replace('"', "'").replace("\n", " ")
+        with open(gh_out, "a", encoding="utf-8") as f:
+            f.write(f"stamp={stamp}\ndir={os.path.relpath(outdir, os.getcwd())}\n"
+                    f"title={safe_title}\nvoice_fallback={str(voice_fallback).lower()}\n"
+                    f"draft_release={str(draft_release).lower()}\n")
+
+    print(f"=== Done in {(time.time() - t0) / 60:.1f} min -> {final_path} "
+          f"({duration / 60:.1f} min, style={style}, engine={used_engine}) ===")
+    if voice_fallback and cfg.get("tts", {}).get("fail_on_fallback", False):
+        raise RuntimeError("Sarvam failed; artifacts were produced but publishing is blocked")
+
+
+
 def main() -> None:
     t0 = time.time()
     tts_mod.reset_run_state()
     with open(os.path.join(REPO_ROOT, "config.yaml"), encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
+
+    # segmented long-form override (Make Long Video workflow): the length
+    # cap of a single job does not apply, so the target scales up.
+    long_min = os.environ.get("LONG_TARGET_MINUTES", "").strip()
+    if long_min:
+        minutes = max(8.0, min(float(long_min), 30.0))
+        cfg["video"]["target_minutes"] = minutes
+        cfg["video"]["scenes_min"] = int(minutes * 1.15)
+        cfg["video"]["scenes_max"] = int(minutes * 1.5)
+        print(f"[long] target {minutes} min, scenes "
+              f"{cfg['video']['scenes_min']}-{cfg['video']['scenes_max']}")
 
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     pexels_key = os.environ.get("PEXELS_API_KEY", "").strip()
@@ -775,6 +1063,37 @@ def main() -> None:
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
 
+    # checkpoint for the finalize stage (single-job AND segmented paths)
+    ck = {"outdir": outdir, "workdir": workdir, "cfg": cfg,
+          "gemini_key": gemini_key, "script": script, "scenes": scenes,
+          "manifest": manifest, "manifest_path": manifest_path,
+          "thumb_ai": thumb_ai, "fact_report": fact_report,
+          "voice_fallback": voice_fallback, "r_gate": r_gate,
+          "story_failed": story_failed, "runtime_ok": runtime_ok,
+          "retention_report": retention_report, "word_budget": word_budget,
+          "total_speech": total_speech, "target_s": target_s,
+          "measured_wpm": measured_wpm, "realized_wpm": realized_wpm,
+          "style": style, "stamp": stamp, "topic": topic,
+          "used_engine": None, "motion_seed": motion_seed,
+          "cta_event": cta_event, "sfx_events": sfx_events,
+          "caption_status": caption_status,
+          "voice_line": tts_mod.ENGINE_USED or "unknown"}
+
+    if os.environ.get("PIPELINE_STAGE", "").strip() == "prepare":
+        # segmented long-form: stop before pixels — render happens in
+        # parallel chunk jobs, then run_long_finish.py resumes from here
+        import pickle
+        with open(os.path.join(outdir, "checkpoint.pkl"), "wb") as f:
+            pickle.dump(ck, f)
+        gh_out = os.environ.get("GITHUB_OUTPUT")
+        if gh_out:
+            with open(gh_out, "a", encoding="utf-8") as f:
+                f.write(f"stamp={stamp}\n"
+                        f"dir={os.path.relpath(outdir, os.getcwd())}\n")
+        print(f"=== PREPARE stage complete in {(time.time() - t0) / 60:.1f} "
+              f"min -> {outdir} (render happens in chunk jobs) ===")
+        return
+
     # 6) render ----------------------------------------------------------------
     final_path = os.path.join(outdir, "final.mp4")
     engine = rcfg.get("engine", "remotion")
@@ -791,248 +1110,7 @@ def main() -> None:
         used_engine = "moviepy"
         import render as render_mod
         render_mod.render(scenes, events, final_path, cfg)
-    postprocess.master_delivery(final_path, cfg)
-    duration = probe_duration(final_path)
-    quality_report = quality_mod.audit_delivery(
-        final_path, manifest["manifest"], cfg,
-        os.path.join(outdir, "quality_report.json"))
-    try:  # hero telemetry travels with the audit (docs/HERO_SHOTS_SPEC.md)
-        quality_report.setdefault("metrics", {}).update(hero_shots.metrics())
-        with open(os.path.join(outdir, "quality_report.json"), "w",
-                  encoding="utf-8") as f:
-            json.dump(quality_report, f, indent=2, ensure_ascii=False)
-    except Exception:
-        pass
-    # G11 — one-vision-call contact-sheet audit of the ACTUAL render
-    render_audit = vision_qc.audit_render(
-        final_path, cfg, gemini_key,
-        forbidden=script.get("forbidden_visuals") or [],
-        out_path=os.path.join(outdir, "render_audit.json"))
-    # a skipped/errored audit is INDETERMINATE, not clean — when the owner
-    # requires a completed audit, absence of review blocks publication
-    if (cfg.get("qc", {}).get("render_audit_required", False)
-            and str(render_audit.get("status", "skipped")) != "ok"):
-        render_audit["publishable"] = False
-        render_audit.setdefault("issues", []).append(
-            {"severity": "serious",
-             "note": f"render audit did not complete "
-                     f"(status: {render_audit.get('status')}) and "
-                     "qc.render_audit_required is enabled"})
-
-    # 7) thumbnail ---------------------------------------------------------------
-    thumb_path = os.path.join(outdir, "thumbnail.jpg")
-    try:
-        thumbnail_remotion(manifest_path, workdir, thumb_path)
-        assert os.path.getsize(thumb_path) > 10_000
-    except Exception as e:
-        print(f"[thumb] Remotion still failed ({e}) -> PIL fallback")
-        import thumbnail as thumb_mod
-        thumb_assets = ([{"path": os.path.join(workdir, "thumb_ai.png"),
-                          "kind": "image"}] if thumb_ai else []) + scenes[0]["assets"]
-        thumb_mod.make_thumbnail(thumb_assets, script["thumb_text"], thumb_path)
-
-    # 7b) thumbnail variants — same hero, alternate text, for YouTube's native
-    # Test & Compare (upload all; YouTube picks the winner by watch-time share)
-    try:
-        seen = {manifest["manifest"]["thumbText"]}
-        letter = ord("b")
-        for opt in (script.get("thumb_options") or [])[:3]:
-            text = str(opt.get("text", "")).strip()[:24]
-            if not text or text in seen:
-                continue
-            seen.add(text)
-            variant = json.loads(json.dumps(manifest, ensure_ascii=False))
-            variant["manifest"]["thumbText"] = text
-            vpath = os.path.join(workdir, f"props_thumb_{chr(letter)}.json")
-            with open(vpath, "w", encoding="utf-8") as f:
-                json.dump(variant, f, ensure_ascii=False)
-            vout = os.path.join(outdir, f"thumbnail_{chr(letter)}.jpg")
-            thumbnail_remotion(vpath, workdir, vout)
-            print(f"[thumb] Test & Compare variant: {os.path.basename(vout)} "
-                  f"({text})")
-            letter += 1
-    except Exception as exc:
-        print(f"[thumb] variants skipped ({exc})")
-
-    # 8) metadata ----------------------------------------------------------------
-    n_ai = sum(1 for sc in scenes for a in sc["assets"] if a.get("ai"))
-    voice_line = tts_mod.ENGINE_USED or "unknown"
-    fact_line = factcheck.markdown(fact_report)
-    # gate modes: false = advisory · high_risk = block on unsupported
-    # high-risk claims only · true/all = block on any unsupported claim
-    gate_mode = str(cfg.get("factcheck", {}).get("gate", False)).strip().lower()
-    if gate_mode in ("true", "1", "all"):
-        fact_requires_review = fact_report.get("unsupported", 0) > 0
-    elif gate_mode == "high_risk":
-        fact_requires_review = bool(fact_report.get("high_risk_unsupported"))
-    else:
-        fact_requires_review = False
-    quality_requires_review = (
-        bool(cfg.get("longform_quality", {}).get("render_qc", {}).get("gate", False))
-        and not quality_report.get("passed", False))
-    audit_requires_review = not render_audit.get("publishable", True)
-    # story audit + runtime contract (retention.gate: off | draft | block)
-    retention_requires_review = (
-        r_gate not in ("off", "false", "0", "")
-        and (story_failed or not runtime_ok))
-    draft_release = (voice_fallback or fact_requires_review
-                     or quality_requires_review or audit_requires_review
-                     or retention_requires_review)
-    status_voice = "⚠️ FALLBACK — DO NOT PUBLISH" if voice_fallback else "OK (cloned)"
-    status_fact = (f"⚠️ REVIEW CLAIMS ({fact_report.get('unsupported', 0)} unsupported)"
-                   if fact_requires_review else fact_report.get("status", "unknown"))
-    status_quality = ("OK" if quality_report.get("passed") else
-                      f"⚠️ REVIEW ({len(quality_report.get('errors', []))} errors)")
-    voice_banner = ("> ⚠️ **VOICE FALLBACK — DO NOT PUBLISH.** This run used Kokoro, "
-                    "not your cloned Sarvam voice. Re-run when Sarvam is available.\n\n"
-                    if voice_fallback else "")
-    fact_banner = ("> ⚠️ **UNSUPPORTED HIGH-RISK CLAIMS — DO NOT PUBLISH** until "
-                   "verified/removed: "
-                   + "; ".join(fact_report.get("high_risk_unsupported", [])[:3])
-                   + "\n\n" if fact_requires_review else "")
-    audit_banner = ("> ⚠️ **RENDER AUDIT — DO NOT PUBLISH:** "
-                    + "; ".join(str(i.get("note", "")) for i in
-                                render_audit.get("issues", [])
-                                if str(i.get("severity", "")).lower() == "serious")[:200]
-                    + "\n\n" if audit_requires_review else "")
-    status_audit = ("⚠️ REVIEW" if audit_requires_review
-                    else render_audit.get("status", "skipped"))
-    status_retention = (
-        "⚠️ REVIEW ("
-        + "; ".join(([f"{len(retention_report.get('violations', []))} story "
-                      "violations"] if not retention_report.get("passed", True)
-                     else [])
-                    + ([f"words {word_budget.get('actual')}/"
-                        f"{word_budget.get('target')}"]
-                       if not word_budget.get("ok", True) else [])
-                    + ([f"runtime {total_speech / 60:.1f}/"
-                        f"{target_s / 60:.1f} min"] if not runtime_ok else []))
-        + ")" if retention_requires_review else "OK")
-    retention_banner = (
-        "> ⚠️ **STORY/RUNTIME AUDIT — REVIEW BEFORE PUBLISHING:** "
-        + "; ".join(v["detail"][:90] for v in
-                    retention_report.get("violations", [])[:3])
-        + "\n\n" if retention_requires_review else "")
-    meta = f"""## {script['title']}
-
-{voice_banner}{fact_banner}{audit_banner}{retention_banner}**Reliability:** Voice: {status_voice} | Captions: {caption_status} | Fact-check: {status_fact} | Quality: {status_quality} | Render audit: {status_audit} | Story: {status_retention}
-
-**Duration:** {duration / 60:.1f} min · **Scenes:** {len(scenes)} · **Style:** {style} ·
-**AI visuals:** {n_ai} · **Run:** {stamp} · **Renderer:** {used_engine} ·
-**Voice:** {voice_line}
-
-### Description (paste into YouTube — chapters + CTA + hashtags included)
-
-{build_description(script, is_short=False, chapters=_chapters_block(scenes))}
-
-### Tags
-
-{', '.join(_india_tags(script.get('tags', []), is_short=False))}
-
-### Title & thumbnail alternates (pick your favourite before uploading)
-
-{chr(10).join(f"{i + 1}. {t}" for i, t in enumerate(script.get('title_options') or [])) or "_none generated_"}
-
-{chr(10).join(f"- **{o.get('text', '')}** — {o.get('concept', '')}" for o in (script.get('thumb_options') or []))}
-
-### Reliability report
-
-{fact_line}
-
-### Checklist before uploading
-
-- [ ] Watch the video once — you are the editor of record
-- [ ] Spot-check any specific numbers/claims in the narration
-- [ ] SCHEDULE the publish for 16:00–17:30 IST — Hindi long-form viewing
-      peaks 6–8 PM IST; going live 2-3h early lets YouTube index + test it
-- [ ] Set the video language to **Hindi** in YouTube Studio (Details → Video language)
-- [ ] Upload ALL thumbnails (thumbnail.jpg + thumbnail_b/c.jpg if present) via
-      Studio's **Test & Compare** — YouTube picks the winner by watch-time
-- [ ] If your music track is CC-BY, add the artist credit to the description
-- [ ] Upload `captions.srt` in YouTube Studio → Subtitles (language: Hindi)
-- [ ] Occasionally drop fresh Studio analytics CSVs into analytics/ so the
-      channel keeps learning
-
-*Assets: Pexels + Gemini AI images (commercial-safe). Voice: {voice_line}
-(your cloned Sarvam voice; Kokoro Apache-2.0 fallback). Motion design:
-Remotion. Brand: BHARAT KE RAHASYA (रहस्यलोक).*
-"""
-    with open(os.path.join(outdir, "metadata.md"), "w", encoding="utf-8") as f:
-        f.write(meta)
-
-    with open(os.path.join(outdir, "run_summary.json"), "w", encoding="utf-8") as f:
-        json.dump({"draft_release": draft_release, "voice_fallback": voice_fallback,
-                   "voice": voice_line, "captions": caption_status,
-                   "factcheck": fact_report,
-                   "quality": quality_report,
-                   "render_audit": render_audit,
-                   "retention": {
-                       "report": retention_report,
-                       "word_budget": word_budget,
-                       "runtime": {"target_s": round(target_s, 1),
-                                   "actual_s": round(total_speech, 1),
-                                   "ok": runtime_ok},
-                       "wpm_measured_used": measured_wpm,
-                       "wpm_realized": realized_wpm,
-                       "gate": r_gate,
-                   },
-                   "motion_library": {
-                       "seed": motion_seed,
-                       "cta": cta_event,
-                       "scene_variants": [sc.get("motion", {}) for sc in scenes],
-                       "sound_events": len(sfx_events),
-                   }}, f, indent=2, ensure_ascii=False)
-
-    # beat-timestamp map — lets future analytics map retention dips to the
-    # exact scene, narrative role, visual mode and asset choice on screen.
-    # A copy is committed to analytics/beats/ so the weekly learnings digest
-    # can join it against exported audience-retention CSVs.
-    beats_payload = [{"n": sc["n"], "title": sc.get("title", ""),
-                      "start": round(sc["start"], 2),
-                      "end": round(sc["start"] + sc["audio_duration"], 2),
-                      "visualMode": sc.get("visual_mode", "broll"),
-                      "visualRole": sc.get("visual_role", ""),
-                      "narrativeRole": sc.get("narrative_role", ""),
-                      "rewardType": (sc.get("reward") or {}).get("type", ""),
-                      "rewardStrength": (sc.get("reward") or {}).get("strength", 0),
-                      "questionOut": sc.get("question_out", ""),
-                      "delivery": sc.get("delivery", "calm"),
-                      "assets": [f"{a['kind']}:{'ai' if a.get('ai') else 'stock'}"
-                                 for a in sc["assets"]]}
-                     for sc in scenes]
-    with open(os.path.join(outdir, "beats.json"), "w", encoding="utf-8") as f:
-        json.dump(beats_payload, f, indent=2, ensure_ascii=False)
-    try:
-        beats_dir = os.path.join(REPO_ROOT, "analytics", "beats")
-        os.makedirs(beats_dir, exist_ok=True)
-        with open(os.path.join(beats_dir, f"{stamp}.json"), "w",
-                  encoding="utf-8") as f:
-            json.dump({"stamp": stamp, "title": script["title"],
-                       "style": style,
-                       "retention_plan": script.get("retention_plan", {}),
-                       "beats": beats_payload}, f, indent=2,
-                      ensure_ascii=False)
-    except Exception as exc:
-        print(f"[beats] analytics copy skipped ({exc})")
-
-    script_gen.log_topic_done(topic, os.path.join(REPO_ROOT, "topics_done.txt"))
-    style_packs.record_use(style, REPO_ROOT, is_short=False)
-    # No automatic next-episode lock: the owner either adds a manual
-    # "NEXT: <topic>" line to topics_done.txt or lets pick_topic choose.
-
-    gh_out = os.environ.get("GITHUB_OUTPUT")
-    if gh_out:
-        safe_title = script["title"].replace('"', "'").replace("\n", " ")
-        with open(gh_out, "a", encoding="utf-8") as f:
-            f.write(f"stamp={stamp}\ndir={os.path.relpath(outdir, os.getcwd())}\n"
-                    f"title={safe_title}\nvoice_fallback={str(voice_fallback).lower()}\n"
-                    f"draft_release={str(draft_release).lower()}\n")
-
-    print(f"=== Done in {(time.time() - t0) / 60:.1f} min -> {final_path} "
-          f"({duration / 60:.1f} min, style={style}, engine={used_engine}) ===")
-    if voice_fallback and cfg.get("tts", {}).get("fail_on_fallback", False):
-        raise RuntimeError("Sarvam failed; artifacts were produced but publishing is blocked")
-
-
+    ck["used_engine"] = used_engine
+    _finalize_delivery(ck)
 if __name__ == "__main__":
     main()
