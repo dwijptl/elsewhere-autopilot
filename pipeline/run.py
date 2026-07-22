@@ -88,7 +88,7 @@ def render_remotion(manifest_path: str, workdir: str, final_path: str) -> None:
            "--public-dir", os.path.abspath(workdir),
            "--concurrency", "2", "--log", "warn"]
     print("[render] remotion:", " ".join(cmd))
-    subprocess.run(cmd, cwd=REMOTION_DIR, check=True, timeout=3.2 * 3600)
+    subprocess.run(cmd, cwd=REMOTION_DIR, check=True, timeout=4.5 * 3600)
     if not os.path.exists(final_path) or os.path.getsize(final_path) < 500_000:
         raise RuntimeError("Remotion produced no/too-small output file")
 
