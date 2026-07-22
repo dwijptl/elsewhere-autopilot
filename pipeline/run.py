@@ -1,4 +1,4 @@
-"""Faceless Autopilot — orchestrator (Terra Incognita edition, Hindi).
+"""Faceless Autopilot — orchestrator (Bharat Ke Rahasya / रहस्यलोक edition, Hindi).
 
 topic -> script (Hindi) -> voiceover (Sarvam cloned voice, Kokoro fallback)
 -> assets (AI + stock, never-repeat log) -> captions -> Remotion render
@@ -955,7 +955,7 @@ def main() -> None:
 
 *Assets: Pexels + Gemini AI images (commercial-safe). Voice: {voice_line}
 (your cloned Sarvam voice; Kokoro Apache-2.0 fallback). Motion design:
-Remotion. Brand: Terra Incognita.*
+Remotion. Brand: BHARAT KE RAHASYA (रहस्यलोक).*
 """
     with open(os.path.join(outdir, "metadata.md"), "w", encoding="utf-8") as f:
         f.write(meta)

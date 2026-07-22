@@ -211,7 +211,9 @@ qc:
                            # (free tier; fail-open — never blocks a run)
   frames: 3                # sample 20/50/80% of each stock clip, not just one frame
   max_upscale: 1.25        # reject obvious blur after portrait crop/upscale
-  max_requests_per_video: 20  # hard cost/rate-limit ceiling for vision QC
+  max_requests_per_video: 40  # hard cost/rate-limit ceiling for vision QC
+                              # (raised for the mystery niche: thin stock pools
+                              # make bad clips likelier — screen more of them)
   render_audit_required: false  # true = a skipped/errored post-render audit is
                                 # INDETERMINATE and drafts the release (enable
                                 # after several clean scheduled runs)

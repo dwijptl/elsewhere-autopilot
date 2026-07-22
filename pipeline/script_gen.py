@@ -1005,6 +1005,9 @@ Write a scene-segmented script and return ONLY valid JSON with this exact shape:
     "main_reveal": "the single strongest answer/fact, held for the climax (Hindi) — the exact content of the main_reveal scene",
     "main_reveal_scene": 0,
     "open_loops": [{{"question": "a Hindi question the viewer is left holding", "opens_scene": 1, "partial_scene": 4, "closes_scene": 7}}]
+    — NEVER empty: the investigation's central question is ALWAYS the first
+    open loop (opens in scene 1; its closes_scene is the FINAL scene, where
+    it closes as answered OR as honestly-unresolved per the ENDING RULE)
   }},
   "description": "2-3 sentences in HINDI (Devanagari) — line 1 restates the hook as a question a viewer would ask, line 2-3 tease the payoff WITHOUT spoiling it. No hashtags here (the pipeline appends them).",
   "tags": ["8-12 tags a HINDI-SPEAKING viewer in India would actually type. At least 6 in Devanagari (e.g. 'मंगल ग्रह', 'ब्रह्मांड के रहस्य'), 2-3 Hinglish in Latin script (e.g. 'mangal grah', 'space hindi'), rest English topic terms. No generic single words like 'science'."],
