@@ -959,9 +959,14 @@ NARRATIVE SHAPE for THIS episode: **{name}** — {s['note']}.
 
 
 def generate_script(cfg: dict, topic: str, api_key: str, learnings: str = "",
-                    done: list | None = None) -> dict:
+                    done: list | None = None,
+                    dossier: dict | None = None) -> dict:
     v = cfg["video"]
     done = done if done is not None else []
+    dossier_block = ""
+    if dossier:
+        import research as research_mod
+        dossier_block = research_mod.prompt_block(dossier)
     skel_name, skel_block = _skeleton_block(len(done))
     wpm = _wpm(cfg)
     words = int(v["target_minutes"] * wpm)
@@ -979,7 +984,7 @@ count your words before returning and expand thin scenes with concrete
 material (never filler).
 TONE: {cfg['channel']['tone']}
 AUDIENCE: {cfg['channel']['audience']}
-{learn_block}{_variety_rules(done, len(done))}{skel_block}{_lang_rules(cfg)}{_style_rules()}
+{dossier_block}{learn_block}{_variety_rules(done, len(done))}{skel_block}{_lang_rules(cfg)}{_style_rules()}
 Write a scene-segmented script and return ONLY valid JSON with this exact shape:
 {{
   "title": "click-worthy but honest YouTube title, <= 70 chars",

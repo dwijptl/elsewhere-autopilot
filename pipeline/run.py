@@ -34,6 +34,7 @@ import mapgen                       # noqa: E402
 import motion as motion_mod         # noqa: E402
 import postprocess                  # noqa: E402
 import quality_report as quality_mod  # noqa: E402
+import research as research_mod     # noqa: E402
 import script_gen                   # noqa: E402
 import style_packs                  # noqa: E402
 import sfx as sfx_mod               # noqa: E402
@@ -461,10 +462,19 @@ def main() -> None:
           f"(recent: {style_packs.recent_styles(style_packs.history_path(REPO_ROOT))})")
     style_packs.apply_pacing(cfg, style, is_short=False)
 
+    # research BEFORE writing: the grounded dossier is the script's only
+    # source of facts (no-skipping rule) — depth bounded by research, not
+    # by one generation pass. Fail-open: {} keeps the old behavior.
+    dossier = research_mod.build_dossier(topic, cfg, gemini_key)
+    if dossier:
+        with open(os.path.join(outdir, "research.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(dossier, f, indent=2, ensure_ascii=False)
+
     # shipped topics drive title-form / skeleton / topic-family rotation
     done_titles = script_gen._done_titles(done_file)
     script = script_gen.generate_script(cfg, topic, gemini_key, learnings,
-                                        done=done_titles)
+                                        done=done_titles, dossier=dossier)
 
     # retention gate "block": stop BEFORE any voice/asset spend when the
     # story audit or word budget still fails after repairs. Default is
