@@ -90,12 +90,32 @@ def _download(url: str, path: str) -> str:
     return path
 
 
-def _best_video_file(video: dict, want_w: int) -> dict | None:
-    files = [f for f in video.get("video_files", []) if f.get("width")]
+def _best_video_file(video: dict, want_w: int, want_h: int | None = None,
+                     max_upscale: float = 1.25) -> dict | None:
+    """Pick a source that can cover the target without obvious upscaling."""
+    files = [
+        f for f in video.get("video_files", [])
+        if f.get("width") and f.get("height") and f.get("link")
+    ]
     if not files:
         return None
-    geq = sorted((f for f in files if f["width"] >= want_w), key=lambda f: f["width"])
-    return geq[0] if geq else max(files, key=lambda f: f["width"])
+    if want_h is None:
+        geq = sorted((f for f in files if f["width"] >= want_w),
+                     key=lambda f: f["width"])
+        return geq[0] if geq else max(files, key=lambda f: f["width"])
+
+    eligible = [
+        f for f in files
+        if max(want_w / float(f["width"]), want_h / float(f["height"]))
+        <= max_upscale
+    ]
+    if not eligible:
+        return None
+    target_ratio = want_w / float(want_h)
+    return min(eligible, key=lambda f: (
+        abs((f["width"] / float(f["height"])) - target_ratio),
+        f["width"] * f["height"],
+    ))
 
 
 def _gradient_card(path: str, w: int, h: int, seed: int) -> str:
@@ -157,12 +177,21 @@ def _dhash(img, size: int = 8) -> str:
         return ""
 
 
-def _visual_ok(path: str, kind: str, label: str) -> bool:
-    """Reject near-black footage (reads as dead air at feed size) and visual
-    duplicates within the same episode. Local, free, fail-open."""
+def _visual_ok(path: str, kind: str, label: str,
+               cfg: dict | None = None) -> bool:
+    """Reject unusable resolution, darkness and episode-level duplicates."""
     img = _probe_frame(path, kind)
     if img is None:
         return True
+    if cfg is not None:
+        target_w = float(cfg["video"]["width"])
+        target_h = float(cfg["video"]["height"])
+        max_upscale = float(cfg.get("qc", {}).get("max_upscale", 1.25))
+        cover_scale = max(target_w / img.width, target_h / img.height)
+        if cover_scale > max_upscale:
+            print(f"[assets] {label}: rejected "
+                  f"(needs {cover_scale:.2f}x upscale after crop)")
+            return False
     try:
         from PIL import ImageStat
         if ImageStat.Stat(img.convert("L")).mean[0] < 26.0:
@@ -201,9 +230,10 @@ def _nasa_relevant(terms: list) -> bool:
     return any(h in joined for h in NASA_HINTS)
 
 
-def _nasa_asset(scene: dict, outdir: str, used: set) -> dict | None:
-    """One exact-entity NASA asset for the scene, video preferred.
-    Public domain (keep NASA credit in the description); never repeats."""
+def _nasa_asset(scene: dict, outdir: str, used: set, cfg: dict,
+                gemini_key: str = "") -> dict | None:
+    """One exact-entity NASA asset, quality-checked like all other footage."""
+    qc_budget = 3
     for term in list(scene.get("search_terms", []))[:2]:
         for media in ("video", "image"):
             try:
@@ -229,8 +259,12 @@ def _nasa_asset(scene: dict, outdir: str, used: set) -> dict | None:
                 except Exception:
                     continue
                 if media == "video":
-                    cands = ([h for h in hrefs if h.endswith("~mobile.mp4")]
-                             or [h for h in hrefs if h.endswith(".mp4")])
+                    mp4s = [h for h in hrefs if h.endswith(".mp4")]
+                    cands = sorted(mp4s, key=lambda h: (
+                        "~large.mp4" not in h,
+                        "~orig.mp4" not in h,
+                        "~mobile.mp4" in h,
+                    ))
                 else:
                     cands = ([h for h in hrefs
                               if h.endswith(("~large.jpg", "~orig.jpg"))]
@@ -247,7 +281,18 @@ def _nasa_asset(scene: dict, outdir: str, used: set) -> dict | None:
                     continue
                 kind = "video" if media == "video" else "image"
                 if not _visual_ok(path, kind,
-                                  f"scene {scene['n']} NASA {nasa_id}"):
+                                  f"scene {scene['n']} NASA {nasa_id}", cfg):
+                    used.add(f"n{nasa_id}")
+                    _rm(path)
+                    continue
+                if qc_budget <= 0:
+                    _rm(path)
+                    return None
+                qc_budget -= 1
+                if not vision_qc.frame_ok(
+                        path, kind, _qc_desc(scene), term, gemini_key, cfg,
+                        forbidden=scene.get("forbidden_visuals") or [],
+                        source="stock"):
                     used.add(f"n{nasa_id}")
                     _rm(path)
                     continue
@@ -269,9 +314,9 @@ def _qc_desc(scene: dict) -> str:
 
 def _stock_videos(scene, need_seconds, outdir, cfg, api_key, used, max_clips,
                   gemini_key=""):
-    if not (api_key or "").strip():
-        return [], 0.0  # stock disabled or key missing — don't fire doomed HTTP
     w = cfg["video"]["width"]
+    h = cfg["video"]["height"]
+    max_upscale = float(cfg.get("qc", {}).get("max_upscale", 1.25))
     assets, covered, qc_budget = [], 0.0, 6  # cap vision checks per scene
     desc = _qc_desc(scene)
     forbidden = scene.get("forbidden_visuals") or []
@@ -299,7 +344,7 @@ def _stock_videos(scene, need_seconds, outdir, cfg, api_key, used, max_clips,
             vid_key = f"v{vid['id']}"
             if vid_key in used or vid.get("duration", 0) < 4:
                 continue
-            vf = _best_video_file(vid, w)
+            vf = _best_video_file(vid, w, h, max_upscale)
             if not vf:
                 continue
             path = os.path.join(outdir, f"s{scene['n']:02d}_{vid['id']}.mp4")
@@ -309,7 +354,7 @@ def _stock_videos(scene, need_seconds, outdir, cfg, api_key, used, max_clips,
                 print(f"[assets] download failed ({vid['id']}): {e}")
                 continue
             if not _visual_ok(path, "video",
-                              f"scene {scene['n']} video {vid['id']}"):
+                              f"scene {scene['n']} video {vid['id']}", cfg):
                 used.add(vid_key)
                 _rm(path)
                 continue
@@ -358,8 +403,6 @@ def _stock_videos(scene, need_seconds, outdir, cfg, api_key, used, max_clips,
 
 def _stock_photo(scene, outdir, api_key, used, orientation="landscape",
                  cfg=None, gemini_key=""):
-    if not (api_key or "").strip():
-        return None  # stock disabled or key missing — don't fire doomed HTTP
     qc_budget = 3
     forbidden = scene.get("forbidden_visuals") or []
     for term in _shaped_queries(scene.get("search_terms", []), scene["n"]):
@@ -377,7 +420,8 @@ def _stock_photo(scene, outdir, api_key, used, orientation="landscape",
                 _download(ph["src"]["large2x"], path)
             except Exception:
                 continue
-            if not _visual_ok(path, "image", f"scene {scene['n']} photo {ph['id']}"):
+            if not _visual_ok(path, "image",
+                              f"scene {scene['n']} photo {ph['id']}", cfg):
                 used.add(key)
                 try:
                     os.remove(path)
@@ -405,37 +449,22 @@ def _stock_photo(scene, outdir, api_key, used, orientation="landscape",
 
 def fetch_scene_assets(scene: dict, need_seconds: float, outdir: str, cfg: dict,
                        pexels_key: str, gemini_key: str, used: set,
-                       used_prompts: set, ai_budget: list) -> list[dict]:
+                       used_prompts: set, ai_budget: list,
+                       rescue_budget: list | None = None) -> list[dict]:
     """Returns [{path, kind, ai(optional)}]. `used`/`used_prompts` are mutated;
     ai_budget is a single-element list acting as a mutable counter."""
     os.makedirs(outdir, exist_ok=True)
-    mode = scene.get("visual_mode", "ai_image")
+    mode = scene.get("visual_mode", "broll")
     assets: list[dict] = []
-
-    # A recognisable piece of Earth in an episode about another planet is the
-    # single fastest way to break the spell. If stock is disabled in config,
-    # it is disabled — not "preferred against".
-    if not cfg.get("ai_images", {}).get("stock_allowed", True):
-        pexels_key = ""
 
     # map scenes render their own background (MapZoom) — no assets needed
     if mode == "map" and scene.get("map_render"):
         return []
 
-    # ── THE INVERSION ────────────────────────────────────────────────────
-    # Channel 1 was stock-first and reached for AI when stock failed. On a
-    # planet that does not exist there IS no stock, so channel 2 is AI-first:
-    # every scene wants a generated still unless it is an abstract texture beat
-    # (dust, water, rock) that could truthfully come from anywhere.
-    # cfg.ai_images.ai_first flips this; setting it false restores channel 1's
-    # behaviour exactly.
-    ai_first = bool(cfg.get("ai_images", {}).get("ai_first", False))
-    if ai_first:
-        wants_ai = mode != "map" and bool((scene.get("ai_prompt") or "").strip())
-    else:
-        wants_ai = mode == "ai_image" or (
-            mode in ("kinetic", "stat", "card", "glass")
-            and not scene.get("search_terms"))
+    # AI-generated hero image (for ai_image scenes, or as bg for kinetic/stat)
+    wants_ai = mode == "ai_image" or (
+        mode in ("kinetic", "stat", "card", "glass", "scale", "causal")
+        and not scene.get("search_terms"))
     prompt = (scene.get("ai_prompt") or "").strip()
     if wants_ai and prompt and ai_budget[0] > 0:
         ph = hashlib.sha1(prompt.lower().encode()).hexdigest()[:16]
@@ -465,7 +494,7 @@ def fetch_scene_assets(scene: dict, need_seconds: float, outdir: str, cfg: dict,
                 }
                 need = min(max(float(beat.get("duration", max_shot)), 1.0), max_shot)
                 if _nasa_relevant(beat_scene["search_terms"]):
-                    nasa = _nasa_asset(beat_scene, outdir, used)
+                    nasa = _nasa_asset(beat_scene, outdir, used, cfg, gemini_key)
                     if nasa:
                         beat_assets.append(nasa)
                 if not beat_assets:
@@ -473,21 +502,28 @@ def fetch_scene_assets(scene: dict, need_seconds: float, outdir: str, cfg: dict,
                         beat_scene, need, outdir, cfg, pexels_key, used,
                         max_clips=1, gemini_key=gemini_key)
                     beat_assets.extend(stock)
+                if not beat_assets and rescue_budget and rescue_budget[0] > 0:
+                    # FLUX rescue still — stock failed exactly where the
+                    # narration binding matters most (docs/HERO_SHOTS_SPEC.md)
+                    rp = " ".join(x for x in (beat.get("cue", ""),
+                                              beat.get("purpose", "")) if x).strip()
+                    if rp:
+                        path = os.path.join(
+                            outdir, f"s{scene['n']:02d}_b{index:02d}_rescue.png")
+                        aspect = ("9:16 tall vertical"
+                                  if _orientation(cfg) == "portrait"
+                                  else "16:9 wide")
+                        if ai_images.generate(rp, path, gemini_key, cfg, aspect):
+                            rescue_budget[0] -= 1
+                            beat_assets.append({"path": path, "kind": "image",
+                                                "ai": True})
+                            print(f"[assets] scene {scene['n']} beat "
+                                  f"{index + 1}: AI rescue still")
                 if not beat_assets:
                     photo = _stock_photo(beat_scene, outdir, pexels_key, used,
                                          _orientation(cfg), cfg, gemini_key)
                     if photo:
                         beat_assets.append(photo)
-            if not beat_assets:
-                # A survey has a limited number of photographs — returning to
-                # the scene's own still (with a different move) reads as
-                # documentary honesty. A gradient card reads as a slideshow.
-                hero = next((a for a in assets
-                             if a.get("ai") and a.get("kind") == "image"), None)
-                if hero is not None:
-                    beat_assets.append({**hero, "beat_index": index})
-                    print(f"[assets] scene {scene['n']} beat {index + 1}: "
-                          "reusing scene still")
             if not beat_assets:
                 path = os.path.join(outdir,
                                     f"s{scene['n']:02d}_b{index:02d}_card.jpg")
@@ -502,8 +538,8 @@ def fetch_scene_assets(scene: dict, need_seconds: float, outdir: str, cfg: dict,
         return assets
 
     # Overlay scenes need one strong background; the graphic carries the beat.
-    if mode in ("kinetic", "stat", "card", "glass"):
-        if not assets and not bool(cfg.get("ai_images", {}).get("ai_first", False)):
+    if mode in ("kinetic", "stat", "card", "glass", "scale", "causal"):
+        if not assets:
             # Long overlay scenes still need visual development behind the
             # graphic. Cap at three free stock clips to prevent a 30-second
             # card from sitting over one repeated background.
@@ -520,7 +556,7 @@ def fetch_scene_assets(scene: dict, need_seconds: float, outdir: str, cfg: dict,
                 assets.append(photo)
     else:
         if _nasa_relevant(scene.get("search_terms", [])):
-            nasa = _nasa_asset(scene, outdir, used)
+            nasa = _nasa_asset(scene, outdir, used, cfg, gemini_key)
             if nasa:
                 assets.append(nasa)
         covered = 6.0 * len(assets)
@@ -536,6 +572,19 @@ def fetch_scene_assets(scene: dict, need_seconds: float, outdir: str, cfg: dict,
             if photo:
                 assets.append(photo)
 
+    if not assets and rescue_budget and rescue_budget[0] > 0:
+        # AI rescue still (non-beat path, e.g. shorts): stock produced nothing
+        # for this scene — a generated still beats an off-topic substitute or
+        # a gradient card (docs/HERO_SHOTS_SPEC.md).
+        rp = (scene.get("ai_prompt") or scene.get("narration") or "").strip()
+        if rp:
+            path = os.path.join(outdir, f"s{scene['n']:02d}_rescue.png")
+            aspect = ("9:16 tall vertical" if _orientation(cfg) == "portrait"
+                      else "16:9 wide")
+            if ai_images.generate(rp, path, gemini_key, cfg, aspect):
+                rescue_budget[0] -= 1
+                assets.append({"path": path, "kind": "image", "ai": True})
+                print(f"[assets] scene {scene['n']}: AI rescue still")
     if not assets:  # absolute fallback — never fail
         path = os.path.join(outdir, f"s{scene['n']:02d}_card.jpg")
         _gradient_card(path, cfg["video"]["width"], cfg["video"]["height"], scene["n"])

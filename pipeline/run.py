@@ -26,24 +26,23 @@ import ai_images                    # noqa: E402
 import align                         # noqa: E402
 import analytics as analytics_mod   # noqa: E402
 import assets as assets_mod         # noqa: E402
+import calibration                  # noqa: E402
 import captions as captions_mod     # noqa: E402
-import canon as canon_mod           # noqa: E402
-import canon_check                  # noqa: E402
-import atlasgen                     # noqa: E402
+import factcheck                    # noqa: E402
+import hero_shots                   # noqa: E402
+import mapgen                       # noqa: E402
 import motion as motion_mod         # noqa: E402
 import postprocess                  # noqa: E402
 import quality_report as quality_mod  # noqa: E402
-import render_check                  # noqa: E402
 import script_gen                   # noqa: E402
+import style_packs                  # noqa: E402
 import sfx as sfx_mod               # noqa: E402
 import tts as tts_mod               # noqa: E402
 import visual_beats as visual_beats_mod  # noqa: E402
 import vision_qc                    # noqa: E402
-import wan_motion                   # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REMOTION_DIR = os.path.join(REPO_ROOT, "remotion")
-STYLES = ["documentary", "kinetic", "editorial", "noir", "telemetry"]
 
 
 def probe_duration(path: str) -> float:
@@ -102,6 +101,94 @@ def thumbnail_remotion(manifest_path: str, workdir: str, thumb_path: str) -> Non
     subprocess.run(cmd, cwd=REMOTION_DIR, check=True, timeout=1200)
 
 
+# ── India/Hindi audience targeting for YouTube metadata ─────────────────
+# YouTube classifies a channel's audience from the LANGUAGE and SEMANTICS of
+# its metadata. Devanagari in the first two lines of the description is the
+# strongest text signal we control; the tag mix decides which Hindi cluster
+# we land in. (Per-video "Video language: Hindi" in Studio still matters most.)
+
+INDIA_DESC_HEADER = ("\U0001F1EE\U0001F1F3 \u092d\u093e\u0930\u0924 \u0915\u0947 \u0905\u0928\u0938\u0941\u0932\u091d\u0947 \u0930\u0939\u0938\u094d\u092f \u2014 BHARAT KE RAHASYA\n\n")
+
+# Evergreen Hindi discovery tags — what an Indian viewer actually types.
+BASE_HINDI_TAGS = ["\u092d\u093e\u0930\u0924 \u0915\u0947 \u0930\u0939\u0938\u094d\u092f",        # भारत के रहस्य
+                   "\u0905\u0928\u0938\u0941\u0932\u091d\u0947 \u0930\u0939\u0938\u094d\u092f",              # अनसुलझे रहस्य
+                   "\u0907\u0924\u093f\u0939\u093e\u0938 \u0915\u0947 \u0930\u0939\u0938\u094d\u092f",      # इतिहास के रहस्य
+                   "\u092a\u094d\u0930\u093e\u091a\u0940\u0928 \u092d\u093e\u0930\u0924",                        # प्राचीन भारत
+                   "\u0939\u093f\u0902\u0926\u0940",                                                                                  # हिंदी
+                   "\u092d\u093e\u0930\u0924",                                                                                        # भारत
+                   "hindi mystery", "indian mysteries", "mystery in hindi",
+                   "hindi documentary"]
+
+# Hinglish search terms — how young Indian viewers actually type on mobile.
+HINGLISH_TAGS = ["bharat ke rahasya", "rahasya hindi", "itihas ke rahasya"]
+
+SUBSCRIBE_CTA = ("\U0001F514 \u0910\u0938\u0947 \u0939\u0940 \u0930\u0939\u0938\u094d\u092f\u094b\u0902 \u0915\u0940 \u092a\u0921\u093c\u0924\u093e\u0932 \u0915\u0947 \u0932\u093f\u090f "
+                 "\u0938\u092c\u094d\u0938\u0915\u094d\u0930\u093e\u0907\u092c \u0915\u0930\u0947\u0902 \u2014 "
+                 "BHARAT KE RAHASYA")   # 🔔 ऐसे ही रहस्यों की पड़ताल के लिए सब्सक्राइब करें
+BASE_HASHTAGS = ["#\u0930\u0939\u0938\u094d\u092f", "#\u0907\u0924\u093f\u0939\u093e\u0938",
+                 "#\u092d\u093e\u0930\u0924"]   # #रहस्य #इतिहास #भारत
+
+
+def _india_tags(tags: list, is_short: bool = False) -> list:
+    """Hindi-first tag list: evergreen Hindi discovery tags, then Hinglish,
+    then the script's own topic tags, deduped and capped to YouTube's 500
+    chars. Topic tags are never dropped before the evergreen ones because the
+    evergreen block is what routes the video into the Hindi/India cluster."""
+    base = list(BASE_HINDI_TAGS) + list(HINGLISH_TAGS)
+    if is_short:
+        base = base + ["shorts", "hindi shorts",
+                       "\u0935\u093f\u091c\u094d\u091e\u093e\u0928 \u0936\u0949\u0930\u094d\u091f\u094d\u0938"]  # विज्ञान शॉर्ट्स
+    seen, out = set(), []
+    for t in base + list(tags or []):
+        k = " ".join(str(t).split())[:30].strip()
+        if k and k.lower() not in seen:
+            seen.add(k.lower())
+            out.append(k)
+    while sum(len(t) + 2 for t in out) > 480 and len(out) > len(base):
+        out.pop()
+    while sum(len(t) + 2 for t in out) > 480:
+        out.pop()
+    return out
+
+
+def get_short_tags(tags: list) -> list:
+    """Public wrapper used by run_short.py."""
+    return _india_tags(tags, is_short=True)
+
+
+def _hashtags(tags: list, is_short: bool = False) -> str:
+    """3-5 hashtags, Hindi first — these render above the title on YouTube."""
+    out = list(BASE_HASHTAGS)
+    for t in tags or []:
+        k = "".join(str(t).split())
+        if k and not k.isascii() and f"#{k}" not in out and len(out) < 5:
+            out.append(f"#{k}")
+    if is_short and "#shorts" not in out:
+        out.append("#shorts")
+    return " ".join(out)
+
+
+def build_description(script: dict, is_short: bool = False,
+                      chapters: str = "") -> str:
+    """Assemble the copy-paste YouTube description, India-targeted.
+
+    Order is deliberate — YouTube weighs the first ~150 chars most, and that
+    is also all a viewer sees before "...more":
+      1. Devanagari channel line (language signal + brand)
+      2. the script's own Hindi hook/summary
+      3. chapters (long-form only — drives session time)
+      4. Hindi subscribe CTA
+      5. Hindi-first hashtags
+    """
+    body = " ".join(str(script.get("description", "")).split())
+    parts = [INDIA_DESC_HEADER.rstrip("\n"), body]
+    if chapters and not is_short:
+        parts.append(chapters)
+    parts.append(SUBSCRIBE_CTA)
+    parts.append(_hashtags(script.get("tags", []), is_short))
+    return "\n\n".join(p for p in parts if p)
+
+
 def _asset_manifest(asset: dict) -> dict:
     return {
         "path": os.path.basename(asset["path"]),
@@ -130,14 +217,8 @@ def _attach_hero(scenes: list[dict], poses: dict) -> None:
     consistent subject on screen while its state visibly changes with the
     journey — continuity stock people can never provide."""
     default = next(iter(poses.values()))
-    # The FINAL pose lands on the last ordinary scene — never the tease
-    # (its closing image is a contract with next week) and never the
-    # verdict card (near-silence, no garnish). Pilot #2 shipped a tunnel
-    # where the Slow Sea glimpse belonged; this is why.
-    ordinary = [sc for sc in scenes[:-1] if not sc.get("verdict_card")]
-    final_n = (ordinary[-1]["n"] if ordinary else scenes[0]["n"])
     wanted = {scenes[0]["n"]: poses.get("establish", default),
-              final_n: poses.get("final", default)}
+              scenes[-1]["n"]: poses.get("final", default)}
     reveal_n = next((sc["n"] for sc in scenes
                      if sc.get("delivery") == "reveal"), None)
     if reveal_n is not None and reveal_n not in wanted:
@@ -150,8 +231,73 @@ def _attach_hero(scenes: list[dict], poses: dict) -> None:
         bi = max(len(beats) - 1, 0) if sc["n"] == scenes[-1]["n"] else 0
         sc["assets"].insert(0, {"path": path, "kind": "image",
                                 "ai": True, "duration": None,
-                                "beat_index": bi, "hero_pose": True})
+                                "beat_index": bi})
     print(f"[hero] attached {len(poses)} pose(s) to scenes {sorted(wanted)}")
+
+
+
+def _animate_hero_shots(scenes: list[dict], workdir: str, cfg: dict,
+                        gemini_key: str) -> None:
+    """3b) Kling i2v on the hook + reveal stills (docs/HERO_SHOTS_SPEC.md).
+    Fail-open: any failure leaves the beat's existing still untouched."""
+    hcfg = cfg.get("hero_shots", {})
+    if not hcfg.get("enabled", False) or not os.environ.get("FAL_KEY", "").strip():
+        return
+    hero_shots.begin_run()
+    seconds = int(hcfg.get("seconds", 5))
+    retries = max(0, int(hcfg.get("max_retries", 1)))
+    targets = hero_shots.select_targets(scenes, int(hcfg.get("max_per_video", 2)))
+    for sc, bi in targets:
+        beats = sc.get("visual_beats") or []
+        cue = ((beats[bi].get("cue") if bi < len(beats) else "")
+               or sc.get("narration", "")[:160])
+        if hero_shots.should_skip(cue):
+            print(f"[hero] scene {sc['n']}: cue needs faces/text — keeping still")
+            continue
+        beat_assets = [a for a in sc.get("assets", [])
+                       if a.get("beat_index") == bi]
+        still = next((a for a in beat_assets
+                      if a["kind"] == "image" and a.get("ai")),
+                     next((a for a in beat_assets if a["kind"] == "image"),
+                          None))
+        if still is None:
+            prompt = (sc.get("ai_prompt") or cue).strip()
+            path = os.path.join(workdir, f"s{sc['n']:02d}_hero_still.png")
+            if prompt and ai_images.generate(prompt, path, gemini_key, cfg,
+                                             aspect="16:9 wide"):
+                still = {"path": path, "kind": "image", "ai": True,
+                         "duration": None, "beat_index": bi}
+                sc["assets"].insert(0, still)
+            else:
+                continue  # nothing worth animating — beat keeps stock
+        clip = os.path.join(workdir, f"s{sc['n']:02d}_hero.mp4")
+        mprompt = hero_shots.motion_prompt(cue, cfg)
+        ok, extra = False, ""
+        for attempt in range(1 + retries):
+            if attempt:
+                hero_shots.note_retry()
+            if not hero_shots.animate(still["path"], mprompt, clip, cfg,
+                                      seconds, extra_negative=extra):
+                break  # budget / network — a retry cannot change the verdict
+            if vision_qc.frame_ok(
+                    clip, "video", cue or sc.get("title", ""),
+                    "cinematic hero shot", gemini_key, cfg,
+                    forbidden=(sc.get("forbidden_visuals") or []) + [
+                        "warped or morphing objects", "garbled or fake text",
+                        "broken anatomy, extra limbs"],
+                    source="generated"):
+                ok = True
+                break
+            extra = "deformed geometry, unstable shapes"
+            print(f"[hero] scene {sc['n']}: QC rejected the clip"
+                  + (" — retrying" if attempt < retries
+                     else " — shipping the still"))
+        if ok:
+            sc["assets"].insert(0, {"path": clip, "kind": "video", "ai": True,
+                                    "hero": True, "beat_index": bi,
+                                    "duration": probe_duration(clip)})
+            print(f"[hero] scene {sc['n']} beat {bi}: animated hero shot live")
+    print(f"[hero] {hero_shots.usage_summary()}")
 
 
 def _thumb_mean_luma(path: str) -> float:
@@ -291,43 +437,58 @@ def main() -> None:
     workdir = os.path.join(outdir, "work")
     os.makedirs(workdir, exist_ok=True)
 
-    # style: if config PINS a pack, honour it — the world needs one look.
-    # (Pilot run #2 shipped with channel 1's rotating styles stomping the
-    # dossier pack: purple gradients, a TI watermark, and no schematic.
-    # Never again.) Rotation only applies when no pack is pinned.
-    pinned = str(cfg.get("render", {}).get("style_pack", "")).strip()
-    if pinned:
-        style = base_style = pinned
-    else:
-        done_count = 0
-        try:
-            with open(os.path.join(REPO_ROOT, "topics_done.txt"), encoding="utf-8") as f:
-                done_count = sum(1 for ln in f
-                                 if ln.strip() and not ln.startswith("#")
-                                 and not ln.startswith("NEXT:"))
-        except Exception:
-            pass
-        style = STYLES[done_count % len(STYLES)]
-        # telemetry shares editorial's photographic grammar + ambient palette
-        base_style = "editorial" if style == "telemetry" else style
-    cfg.setdefault("render", {})["style_pack"] = base_style  # steers AI-image look
-    print(f"=== Faceless Autopilot run {stamp} · style: {style} ===")
+    print(f"=== Bharat Ke Rahasya run {stamp} ===")
+
+    # narration-pace calibration: word budgets use the MEASURED wpm of past
+    # runs (calibration.json) instead of the static channel.wpm guess
+    measured_wpm = calibration.measured_wpm(
+        REPO_ROOT, int(cfg["channel"].get("wpm", 130)), kind="long")
+    if measured_wpm:
+        cfg["channel"]["wpm_measured"] = measured_wpm
+        print(f"[calib] word budget uses measured pace: {measured_wpm} wpm "
+              f"(configured: {cfg['channel'].get('wpm', 130)})")
 
     # 1) topic + script ------------------------------------------------------
-    script_file = os.environ.get("SCRIPT_FILE", "").strip()
-    if script_file:
-        # Hand-written episode: same gates, no LLM rewriting of the voice.
-        script = script_gen.load_script_file(
-            os.path.join(REPO_ROOT, script_file), cfg, gemini_key)
-        topic = script["topic"]
-    else:
-        topic = script_gen.pick_topic(cfg, gemini_key,
-                                      os.path.join(REPO_ROOT, "topics_done.txt"),
-                                      learnings)
-        script = script_gen.generate_script(cfg, topic, gemini_key, learnings)
-    fact_report = canon_check.check_script(script, cfg, gemini_key, REPO_ROOT)
-    # the pipeline may PROPOSE new canon; only Dwij canonises it
-    canon_mod.propose(script, REPO_ROOT)
+    done_file = os.path.join(REPO_ROOT, "topics_done.txt")
+    topic = script_gen.pick_topic(cfg, gemini_key, done_file, learnings)
+
+    # topic-driven style: the LOOK follows the SUBJECT (mystery -> noir
+    # family, space -> cosmos, body -> medical...), no-repeat window over
+    # the last runs. Replaces the old done_count % N rotation.
+    style = style_packs.select_and_log(topic, "", REPO_ROOT, is_short=False)
+    cfg.setdefault("render", {})["style_pack"] = style  # steers AI-image look
+    print(f"[style] topic-driven pack: {style} "
+          f"(recent: {style_packs.recent_styles(style_packs.history_path(REPO_ROOT))})")
+    style_packs.apply_pacing(cfg, style, is_short=False)
+
+    # shipped topics drive title-form / skeleton / topic-family rotation
+    done_titles = script_gen._done_titles(done_file)
+    script = script_gen.generate_script(cfg, topic, gemini_key, learnings,
+                                        done=done_titles)
+
+    # retention gate "block": stop BEFORE any voice/asset spend when the
+    # story audit or word budget still fails after repairs. Default is
+    # "draft" (proceed, mark the release for review) per the repo's
+    # never-block-a-scheduled-render philosophy.
+    retention_report = script.get("retention_report") or {"passed": True,
+                                                          "violations": []}
+    word_budget = script.get("word_budget") or {"ok": True}
+    r_gate = str(cfg.get("retention", {}).get("gate", "draft")).strip().lower()
+    story_failed = (not retention_report.get("passed", True)
+                    or not word_budget.get("ok", True))
+    if r_gate == "block" and story_failed:
+        with open(os.path.join(outdir, "retention_report.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"retention": retention_report,
+                       "word_budget": word_budget}, f, indent=2,
+                      ensure_ascii=False)
+        raise RuntimeError(
+            "retention.gate=block: story audit failed after repairs "
+            f"({len(retention_report.get('violations', []))} violations, "
+            f"word budget ok={word_budget.get('ok')}) — stopped before TTS. "
+            "See retention_report.json; lower the gate to 'draft' to render "
+            "anyway.")
+    fact_report = factcheck.check_script(script, cfg, gemini_key)
     with open(os.path.join(outdir, "claims.json"), "w", encoding="utf-8") as f:
         json.dump(fact_report, f, indent=2, ensure_ascii=False)  # claim ledger
     with open(os.path.join(outdir, "script.json"), "w", encoding="utf-8") as f:
@@ -360,7 +521,8 @@ def main() -> None:
 
     # 2) voiceover -----------------------------------------------------------
     fps = int(cfg["video"]["fps"])
-    xfade = float(cfg["video"].get("crossfade", 0.4))
+    jit = style_packs.render_jitter(script["title"])
+    xfade = float(cfg["video"].get("crossfade", 0.4)) * jit["xfade_mul"]
     scenes, offset = [], 0.0
     for sc in script["scenes"]:
         wav = os.path.join(workdir, f"vo_s{sc['n']:02d}.wav")
@@ -377,11 +539,21 @@ def main() -> None:
     print(f"[tts] {tts_mod.usage_summary()}")
     total_speech = scenes[-1]["start"] + scenes[-1]["audio_duration"]
     target_s = float(cfg["video"]["target_minutes"]) * 60
-    if not 0.85 * target_s <= total_speech <= 1.15 * target_s:
+    # close the calibration loop: measure the ACTUAL pace of this run so the
+    # next run's word budget is grounded in reality
+    narration_words = sum(len(str(sc.get("narration", "")).split())
+                          for sc in script["scenes"])
+    narration_seconds = sum(sc["audio_duration"] for sc in scenes)
+    realized_wpm = calibration.record(REPO_ROOT, "long", narration_words,
+                                      narration_seconds, stamp)
+    duration_tol = float(cfg.get("retention", {}).get("duration_tolerance",
+                                                      0.10))
+    runtime_ok = abs(total_speech - target_s) <= duration_tol * target_s
+    if not runtime_ok:
         print(f"[warn] narration runs {total_speech / 60:.1f} min vs "
               f"{target_s / 60:.1f} min target "
-              f"({total_speech / target_s * 100:.0f}%) — check word budget "
-              f"and channel.wpm calibration")
+              f"({total_speech / target_s * 100:.0f}%) — outside the "
+              f"±{duration_tol:.0%} band; release will be flagged for review")
     voice_fallback = (str(cfg.get("tts", {}).get("engine", "")).lower() == "sarvam"
                       and tts_mod.fallback_used())
 
@@ -400,26 +572,24 @@ def main() -> None:
     for sc in scenes:
         visual_beats_mod.time_scene(sc)
 
-    # 2b) atlas locator — the growing map of a planet that does not exist.
-    # This is the returning-viewer glue: every episode plants its case on the
-    # same map, and unrevealed regions stay dark until an episode reveals them.
-    if cfg.get("atlas", {}).get("enabled", True):
+    # 2b) map scenes — render branded world/region maps (fail -> b-roll)
+    if cfg.get("maps", {}).get("enabled", True):
         for sc in scenes:
             if sc.get("visual_mode") == "map":
-                at = sc.get("atlas") or sc.get("map") or {}
-                region_id = str(at.get("region") or script.get("region") or "")
-                render = atlasgen.render_scene_maps(
-                    region_id, workdir, sc["n"], portrait=False,
-                    repo_root=REPO_ROOT)
+                mp = sc.get("map") or {}
+                render = None
+                if mp.get("lat") is not None and mp.get("lon") is not None:
+                    render = mapgen.render_scene_maps(
+                        mp["lat"], mp["lon"], workdir, sc["n"], portrait=False)
                 if render:
-                    render["label"] = str(at.get("label") or render.get("label", ""))[:40]
+                    render["label"] = str(mp.get("label", ""))[:40]
                     sc["map_render"] = render
                 else:
-                    sc["visual_mode"] = "ai_image"
+                    sc["visual_mode"] = "broll"
     else:
         for sc in scenes:
             if sc.get("visual_mode") == "map":
-                sc["visual_mode"] = "ai_image"
+                sc["visual_mode"] = "broll"
 
     # 3) assets — AI first where scripted, stock fallback, never repeat -----
     log_path = os.path.join(REPO_ROOT, "assets_used.json")
@@ -428,22 +598,17 @@ def main() -> None:
     assets_mod.reset_episode_state()  # fresh luma/duplicate guards per video
     used: set = set(usage_log["pexels"])
     used_prompts: set = set(usage_log["prompts"])
-    if script.get("handwritten"):
-        # The prompt ledger stops DIFFERENT episodes repeating imagery. A
-        # hand-written script re-run is the SAME episode — consulting the
-        # ledger here skipped every scene still on pilot run #3 and shipped
-        # captions over gradients. Re-runs regenerate their own imagery.
-        used_prompts = set()
     aicfg = cfg.get("ai_images", {})
     if os.environ.get("FAL_KEY", "").strip():  # FLUX on -> richer AI visuals
         ai_budget = [int(aicfg.get("max_per_video_flux", 4))]
     else:
         ai_budget = [int(aicfg.get("max_per_video", 2))]
+    rescue_budget = [int(aicfg.get("rescue_budget", 0))]
     for sc in scenes:
         sc["forbidden_visuals"] = script.get("forbidden_visuals") or []
         sc["assets"] = assets_mod.fetch_scene_assets(
             sc, sc["audio_duration"], workdir, cfg, pexels_key, gemini_key,
-            used, used_prompts, ai_budget)
+            used, used_prompts, ai_budget, rescue_budget=rescue_budget)
         for a in sc["assets"]:
             a["duration"] = probe_duration(a["path"]) if a["kind"] == "video" else None
     usage_log["pexels"] = sorted(used)
@@ -452,31 +617,8 @@ def main() -> None:
     if hero_poses:
         _attach_hero(scenes, hero_poses)
 
-    # 3b) EXPORT GATE — no silent slideshows. Runs BEFORE the Wan spend:
-    # if the stills are missing, the run must die while the only money spent
-    # is TTS, not after buying motion shots for a video that can't ship.
-    # Overlay-held scenes (schematic, verdict, kinetic, stat, atlas) carry
-    # their own visual and are exempt.
-    for sc in scenes:
-        carries_own_visual = (
-            sc.get("visual_mode") in ("glass", "card", "kinetic", "stat")
-            or sc.get("verdict_card")
-            or (sc.get("visual_mode") == "map" and sc.get("map_render")))
-        # A gradient card is a placeholder, not a visual — a scene carried
-        # entirely by gradients is exactly the "empty backgrounds" failure
-        # this gate exists to stop (pilot run #3).
-        real_visual = any(a.get("ai") or a.get("kind") == "video"
-                          for a in sc.get("assets", []))
-        if (float(sc.get("audio_duration", 0)) > 3.0 and not real_visual
-                and not carries_own_visual):
-            raise RuntimeError(
-                f"EXPORT GATE: scene {sc.get('n')} runs "
-                f"{sc.get('audio_duration', 0):.1f}s with no real visual "
-                f"(gradients don't count) and no overlay. Refusing to spend "
-                f"further on an unfinished video.")
-
-    # 3c) hero motion — Wan i2v animates 1-2 flagged stills; fail-open ------
-    wan_motion.animate_heroes(scenes, cfg, workdir)
+    # 3b) animated hero shots — hook + reveal come alive (fail-open) --------
+    _animate_hero_shots(scenes, workdir, cfg, gemini_key)
 
     # 4) captions ------------------------------------------------------------
     events, srt = captions_mod.build_captions(scenes, cfg["captions"]["max_chars"])
@@ -485,16 +627,21 @@ def main() -> None:
 
     # 4b) deterministic motion library + sound design + dedicated thumbnail ----
     motion_seed = f"{script['title']}:{style}"
-    motion_mod.decorate_scenes(scenes, motion_seed)
+    motion_mod.decorate_scenes(
+        scenes, motion_seed,
+        frame_pool=style_packs.frames_for(style),
+        lower_third_pool=style_packs.lower_thirds_for(style))
     cta_event = motion_mod.plan_cta(scenes, cfg, motion_seed, is_short=False)
     sfx_events = sfx_mod.plan_events(scenes, cfg, workdir, cta_event)
     music_automation = sfx_mod.plan_music_automation(scenes, cfg)
-    music_path = pick_music(workdir, cfg, motion_seed, base_style)
+    music_path = pick_music(workdir, cfg, motion_seed, style)
     thumb_ai = None
     tp = (script.get("thumb_prompt") or "").strip()
     if tp:
         p = os.path.join(workdir, "thumb_ai.png")
-        if ai_images.generate(tp, p, gemini_key, cfg, aspect="16:9 wide"):
+        if ai_images.generate(tp, p, gemini_key, cfg, aspect="16:9 wide",
+                              provider=str(cfg.get("thumbnail", {})
+                                           .get("ai_provider", "gemini"))):
             if _thumb_mean_luma(p) < 42:  # murky — one brighter retry
                 print("[thumb] too dark for feed size — regenerating brighter")
                 bright_tp = (tp + " The subject is LARGE in frame with bright "
@@ -502,6 +649,8 @@ def main() -> None:
                              "light — clearly readable as a tiny thumbnail, "
                              "not a dark murky image.")
                 ai_images.generate(bright_tp, p, gemini_key, cfg,
+                                   provider=str(cfg.get("thumbnail", {})
+                                                .get("ai_provider", "gemini")),
                                    aspect="16:9 wide")
             _lift_thumb(p)
             thumb_ai = "thumb_ai.png"
@@ -510,8 +659,9 @@ def main() -> None:
     # 5) manifest ------------------------------------------------------------
     rcfg = cfg.get("render", {})
     brand_cfg = cfg.get("brand", {})
-    overlay_seconds = float(cfg.get("longform_quality", {})
-                            .get("overlay_seconds", 5.0))
+    overlay_seconds = (float(cfg.get("longform_quality", {})
+                             .get("overlay_seconds", 5.0))
+                       * jit["overlay_mul"])
     for sc in scenes:
         sc["impact_start"] = _impact_start(sc, overlay_seconds)
         if sc["impact_start"] > 0:
@@ -522,7 +672,8 @@ def main() -> None:
         "width": int(cfg["video"]["width"]),
         "height": int(cfg["video"]["height"]),
         "xfadeFrames": max(int(round(xfade * fps)), 1),
-        "maxShotSeconds": float(cfg["video"].get("max_shot_seconds", 5)),
+        "maxShotSeconds": float(cfg["video"].get("max_shot_seconds", 5))
+        * jit["max_shot_mul"],
         "overlaySeconds": overlay_seconds,
         "style": style,
         "variableLabel": str((script.get("changing_variable") or {})
@@ -534,7 +685,9 @@ def main() -> None:
         "brandName": brand_cfg.get("name", ""),
         "brandTagline": brand_cfg.get("tagline", ""),
         "watermarkPath": stage_brand(workdir),
-        "watermarkOpacity": float(brand_cfg.get("watermark_opacity", 0.08)),
+        "watermarkOpacity": min(max(
+            float(brand_cfg.get("watermark_opacity", 0.08))
+            + jit["watermark_off"], 0.05), 0.14),
         "outroSeconds": float(cfg["video"].get("outro_seconds", 4)),
         "title": script["title"],
         "thumbText": script.get("thumb_text", script["title"][:24]),
@@ -554,28 +707,6 @@ def main() -> None:
         "captions": [{"start": round(s, 3), "end": round(e, 3), "text": t}
                      for s, e, t in events
                      if bool(cfg["captions"].get("enabled", True))],
-        # the disclosure is shown on screen in the first seconds, not only
-        # spoken — honesty is a brand asset on this channel
-        "truthLabel": (canon_mod.load(REPO_ROOT).get("planet", {})
-                       .get("truth_label",
-                            "Original speculative documentary. The place is "
-                            "fictional; the principles are real.")),
-        # the case-level spine (the Verdict card and the Schematic read this)
-        "verdict": script.get("verdict", "FAILED"),
-        "verdictReason": script.get("verdict_reason", ""),
-        # the human ledger — a verdict about a settlement is ambiguous until
-        # the people are accounted for (pilot review, 2026-07-14)
-        "verdictOutcome": str(script.get("human_outcome", ""))[:80],
-        "settlement": script.get("settlement", {}) or {},
-        "systems": [
-            {"name": sy.get("name", ""),
-             "runs_at": sy.get("runs_at", ""),
-             # the schematic draws a shared dependency as ONE node with two
-             # lines running into it — that is the whole trick, and it only
-             # works if the systems declare what they depend on
-             "depends_on": sy.get("depends_on", "")}
-            for sy in (script.get("systems") or [])
-        ],
         "scenes": [{
             "n": sc["n"],
             "start": round(sc["start"], 3),
@@ -583,13 +714,14 @@ def main() -> None:
             "delivery": sc.get("delivery", "calm"),
             "milestone": sc.get("milestone") or {},
             "title": sc.get("title", ""),
-            "visualMode": sc.get("visual_mode", "ai_image"),
-            "verdictCard": bool(sc.get("verdict_card", False)),
-            "heroMotion": bool(sc.get("hero_motion", False)),
+            "visualMode": sc.get("visual_mode", "broll"),
             "kineticText": sc.get("kinetic_text", ""),
             "stat": sc.get("stat", {}) or {},
             "card": sc.get("card", {}) or {},
             "glass": sc.get("glass", {}) or {},
+            "compare": sc.get("compare", {}) or {},
+            "causal": sc.get("causal", {}) or {},
+            "evidence": sc.get("evidence", {}) or {},
             "map": sc.get("map_render") or {},
             "motion": sc.get("motion") or {},
             "audioPath": os.path.basename(sc["audio_path"]),
@@ -623,16 +755,28 @@ def main() -> None:
     quality_report = quality_mod.audit_delivery(
         final_path, manifest["manifest"], cfg,
         os.path.join(outdir, "quality_report.json"))
+    try:  # hero telemetry travels with the audit (docs/HERO_SHOTS_SPEC.md)
+        quality_report.setdefault("metrics", {}).update(hero_shots.metrics())
+        with open(os.path.join(outdir, "quality_report.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(quality_report, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
     # G11 — one-vision-call contact-sheet audit of the ACTUAL render
     render_audit = vision_qc.audit_render(
         final_path, cfg, gemini_key,
         forbidden=script.get("forbidden_visuals") or [],
         out_path=os.path.join(outdir, "render_audit.json"))
-    # G12 — deterministic flat-frame scan of the finished pixels. Unlike the
-    # vision audit this cannot skip, cannot hit a quota, and needs no key.
-    # It exists because twice the assets were fine and the screen was not.
-    flat_report = render_check.check(final_path)
-    print(f"[flatcheck] {render_check.describe(flat_report)}")
+    # a skipped/errored audit is INDETERMINATE, not clean — when the owner
+    # requires a completed audit, absence of review blocks publication
+    if (cfg.get("qc", {}).get("render_audit_required", False)
+            and str(render_audit.get("status", "skipped")) != "ok"):
+        render_audit["publishable"] = False
+        render_audit.setdefault("issues", []).append(
+            {"severity": "serious",
+             "note": f"render audit did not complete "
+                     f"(status: {render_audit.get('status')}) and "
+                     "qc.render_audit_required is enabled"})
 
     # 7) thumbnail ---------------------------------------------------------------
     thumb_path = os.path.join(outdir, "thumbnail.jpg")
@@ -672,10 +816,10 @@ def main() -> None:
     # 8) metadata ----------------------------------------------------------------
     n_ai = sum(1 for sc in scenes for a in sc["assets"] if a.get("ai"))
     voice_line = tts_mod.ENGINE_USED or "unknown"
-    fact_line = canon_check.markdown(fact_report)
+    fact_line = factcheck.markdown(fact_report)
     # gate modes: false = advisory · high_risk = block on unsupported
     # high-risk claims only · true/all = block on any unsupported claim
-    gate_mode = str(cfg.get("canon_check", {}).get("gate", False)).strip().lower()
+    gate_mode = str(cfg.get("factcheck", {}).get("gate", False)).strip().lower()
     if gate_mode in ("true", "1", "all"):
         fact_requires_review = fact_report.get("unsupported", 0) > 0
     elif gate_mode == "high_risk":
@@ -685,16 +829,14 @@ def main() -> None:
     quality_requires_review = (
         bool(cfg.get("longform_quality", {}).get("render_qc", {}).get("gate", False))
         and not quality_report.get("passed", False))
-    # A SKIPPED audit is not a PASSED audit. Run #4 published as a normal
-    # release because the audit skipped and defaulted publishable=True —
-    # unverified must always mean draft, never "assume fine".
-    audit_status = str(render_audit.get("status", "skipped"))
-    audit_requires_review = (not render_audit.get("publishable", True)
-                             or audit_status.startswith("skipped"))
-    flat_requires_review = not flat_report.get("passed", True)
+    audit_requires_review = not render_audit.get("publishable", True)
+    # story audit + runtime contract (retention.gate: off | draft | block)
+    retention_requires_review = (
+        r_gate not in ("off", "false", "0", "")
+        and (story_failed or not runtime_ok))
     draft_release = (voice_fallback or fact_requires_review
                      or quality_requires_review or audit_requires_review
-                     or flat_requires_review)
+                     or retention_requires_review)
     status_voice = "⚠️ FALLBACK — DO NOT PUBLISH" if voice_fallback else "OK (cloned)"
     status_fact = (f"⚠️ REVIEW CLAIMS ({fact_report.get('unsupported', 0)} unsupported)"
                    if fact_requires_review else fact_report.get("status", "unknown"))
@@ -714,25 +856,37 @@ def main() -> None:
                     + "\n\n" if audit_requires_review else "")
     status_audit = ("⚠️ REVIEW" if audit_requires_review
                     else render_audit.get("status", "skipped"))
+    status_retention = (
+        "⚠️ REVIEW ("
+        + "; ".join(([f"{len(retention_report.get('violations', []))} story "
+                      "violations"] if not retention_report.get("passed", True)
+                     else [])
+                    + ([f"words {word_budget.get('actual')}/"
+                        f"{word_budget.get('target')}"]
+                       if not word_budget.get("ok", True) else [])
+                    + ([f"runtime {total_speech / 60:.1f}/"
+                        f"{target_s / 60:.1f} min"] if not runtime_ok else []))
+        + ")" if retention_requires_review else "OK")
+    retention_banner = (
+        "> ⚠️ **STORY/RUNTIME AUDIT — REVIEW BEFORE PUBLISHING:** "
+        + "; ".join(v["detail"][:90] for v in
+                    retention_report.get("violations", [])[:3])
+        + "\n\n" if retention_requires_review else "")
     meta = f"""## {script['title']}
 
-{voice_banner}{fact_banner}{audit_banner}**Reliability:** Voice: {status_voice} | Captions: {caption_status} | Fact-check: {status_fact} | Quality: {status_quality} | Render audit: {status_audit} | Flat check: {render_check.describe(flat_report)}
+{voice_banner}{fact_banner}{audit_banner}{retention_banner}**Reliability:** Voice: {status_voice} | Captions: {caption_status} | Fact-check: {status_fact} | Quality: {status_quality} | Render audit: {status_audit} | Story: {status_retention}
 
 **Duration:** {duration / 60:.1f} min · **Scenes:** {len(scenes)} · **Style:** {style} ·
 **AI visuals:** {n_ai} · **Run:** {stamp} · **Renderer:** {used_engine} ·
 **Voice:** {voice_line}
 
-### Description (paste into YouTube)
+### Description (paste into YouTube — chapters + CTA + hashtags included)
 
-{script['description']}
-
-### Chapters (paste at the END of the description — enables YouTube chapters)
-
-{_chapters_block(scenes) or "_not enough scenes for chapters_"}
+{build_description(script, is_short=False, chapters=_chapters_block(scenes))}
 
 ### Tags
 
-{', '.join(script.get('tags', []))}
+{', '.join(_india_tags(script.get('tags', []), is_short=False))}
 
 ### Title & thumbnail alternates (pick your favourite before uploading)
 
@@ -768,10 +922,19 @@ Remotion. Brand: Terra Incognita.*
     with open(os.path.join(outdir, "run_summary.json"), "w", encoding="utf-8") as f:
         json.dump({"draft_release": draft_release, "voice_fallback": voice_fallback,
                    "voice": voice_line, "captions": caption_status,
-                   "flat_check": flat_report,
-                   "canon_check": fact_report,
+                   "factcheck": fact_report,
                    "quality": quality_report,
                    "render_audit": render_audit,
+                   "retention": {
+                       "report": retention_report,
+                       "word_budget": word_budget,
+                       "runtime": {"target_s": round(target_s, 1),
+                                   "actual_s": round(total_speech, 1),
+                                   "ok": runtime_ok},
+                       "wpm_measured_used": measured_wpm,
+                       "wpm_realized": realized_wpm,
+                       "gate": r_gate,
+                   },
                    "motion_library": {
                        "seed": motion_seed,
                        "cta": cta_event,
@@ -780,26 +943,41 @@ Remotion. Brand: Terra Incognita.*
                    }}, f, indent=2, ensure_ascii=False)
 
     # beat-timestamp map — lets future analytics map retention dips to the
-    # exact scene, visual mode and asset choice that was on screen
+    # exact scene, narrative role, visual mode and asset choice on screen.
+    # A copy is committed to analytics/beats/ so the weekly learnings digest
+    # can join it against exported audience-retention CSVs.
+    beats_payload = [{"n": sc["n"], "title": sc.get("title", ""),
+                      "start": round(sc["start"], 2),
+                      "end": round(sc["start"] + sc["audio_duration"], 2),
+                      "visualMode": sc.get("visual_mode", "broll"),
+                      "visualRole": sc.get("visual_role", ""),
+                      "narrativeRole": sc.get("narrative_role", ""),
+                      "rewardType": (sc.get("reward") or {}).get("type", ""),
+                      "rewardStrength": (sc.get("reward") or {}).get("strength", 0),
+                      "questionOut": sc.get("question_out", ""),
+                      "delivery": sc.get("delivery", "calm"),
+                      "assets": [f"{a['kind']}:{'ai' if a.get('ai') else 'stock'}"
+                                 for a in sc["assets"]]}
+                     for sc in scenes]
     with open(os.path.join(outdir, "beats.json"), "w", encoding="utf-8") as f:
-        json.dump([{"n": sc["n"], "title": sc.get("title", ""),
-                    "start": round(sc["start"], 2),
-                    "end": round(sc["start"] + sc["audio_duration"], 2),
-                    "visualMode": sc.get("visual_mode", "broll"),
-                    "visualRole": sc.get("visual_role", ""),
-                    "delivery": sc.get("delivery", "calm"),
-                    "assets": [f"{a['kind']}:{'ai' if a.get('ai') else 'stock'}"
-                               for a in sc["assets"]]}
-                   for sc in scenes], f, indent=2, ensure_ascii=False)
+        json.dump(beats_payload, f, indent=2, ensure_ascii=False)
+    try:
+        beats_dir = os.path.join(REPO_ROOT, "analytics", "beats")
+        os.makedirs(beats_dir, exist_ok=True)
+        with open(os.path.join(beats_dir, f"{stamp}.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"stamp": stamp, "title": script["title"],
+                       "style": style,
+                       "retention_plan": script.get("retention_plan", {}),
+                       "beats": beats_payload}, f, indent=2,
+                      ensure_ascii=False)
+    except Exception as exc:
+        print(f"[beats] analytics copy skipped ({exc})")
 
     script_gen.log_topic_done(topic, os.path.join(REPO_ROOT, "topics_done.txt"))
-    tease = str(script.get("next_tease_topic", "")).strip()
-    if tease:
-        # the on-screen tease is a promise — lock it as the next episode
-        with open(os.path.join(REPO_ROOT, "topics_done.txt"), "a",
-                  encoding="utf-8") as f:
-            f.write(f"NEXT: {tease}\n")
-        print(f"[script] next episode locked to the on-screen tease: {tease}")
+    style_packs.record_use(style, REPO_ROOT, is_short=False)
+    # No automatic next-episode lock: the owner either adds a manual
+    # "NEXT: <topic>" line to topics_done.txt or lets pick_topic choose.
 
     gh_out = os.environ.get("GITHUB_OUTPUT")
     if gh_out:

@@ -1,1 +1,3 @@
-# Channel learnings — empty until the first analytics run.
+# Learnings
+
+(Empty — populated by the weekly Update Learnings workflow once analytics CSVs land.)

@@ -18,14 +18,15 @@ import {MapZoom} from './Map';
 import {getStyle, StylePack} from './styles';
 import {
   CaptionsLayer,
-  CinematicOverlay,
   LightLeak,
   Outro,
   ProgressBar,
   SceneVisual,
   SfxLayer,
+  TextureOverlay,
   Watermark,
 } from './elements';
+import {variationFor} from './variation';
 import {
   AnimatedLowerThird,
   AnimatedStatCard,
@@ -36,7 +37,7 @@ import {
 } from './motion-library';
 import type {MotionSpec} from './motion-library';
 import {GlassCard} from './glass';
-import {LoopDiagram, Schematic, TwoChoices, Verdict} from './dossier';
+import {CausalDiagram, EvidenceFrame, ScaleComparator} from './explainers';
 import {MetricReadout, TelemetryHUD} from './hud';
 import type {Milestone} from './hud';
 import {blurWhip, zoomPunch} from './transitions';
@@ -62,6 +63,16 @@ const pickTransition = (i: number, style: StylePack): any => {
       if (r < 0.6) return wipe({direction: 'from-top-left'});
       if (r < 0.8) return zoomPunch();
       return fade();
+    case 'whips':
+      if (r < 0.35) return blurWhip('from-right');
+      if (r < 0.6) return blurWhip('from-left');
+      if (r < 0.8) return zoomPunch();
+      return slide({direction: 'from-right'});
+    case 'punches':
+      if (r < 0.45) return zoomPunch();
+      if (r < 0.7) return fade();
+      if (r < 0.88) return blurWhip('from-right');
+      return wipe({direction: 'from-left'});
     default:
       if (r < 0.35) return fade();
       if (r < 0.5) return zoomPunch();
@@ -169,30 +180,11 @@ const CameraRig: React.FC<{
   return <AbsoluteFill style={{transform}}>{children}</AbsoluteFill>;
 };
 
-const TruthChip: React.FC<{text: string; accent: string}> = ({text, accent}) => {
-  const frame = useCurrentFrame();
-  const {fps, width} = useVideoConfig();
-  const s = width / 1920;
-  const inO = interpolate(frame, [0, Math.round(0.5 * fps)], [0, 1],
-    {extrapolateRight: 'clamp'});
-  const outO = interpolate(frame, [Math.round(6 * fps), Math.round(7 * fps)],
-    [1, 0], {extrapolateLeft: 'clamp'});
-  return (
-    <div style={{
-      position: 'absolute', top: 26 * s, right: 30 * s,
-      maxWidth: 560 * s, opacity: Math.min(inO, outO),
-      background: 'rgba(28,24,20,0.78)', borderLeft: `${3 * s}px solid ${accent}`,
-      padding: `${8 * s}px ${14 * s}px`, borderRadius: 4 * s,
-      color: '#EFE4D2', fontSize: 21 * s, lineHeight: 1.35,
-      fontFamily: 'Inter, sans-serif', letterSpacing: 0.3, textAlign: 'left',
-    }}>{text}</div>
-  );
-};
-
 export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
   const fps = m.fps;
   const {durationInFrames} = useVideoConfig();
   const style = getStyle(m.style);
+  const vr = variationFor(m.motionSeed || m.title || 'main');
   const chapterMarks = m.scenes.slice(1).map(
     (sc) => ((sc.start ?? 0) * fps) / Math.max(durationInFrames, 1));
   const metricLabel = String((m as any).variableLabel ?? '');
@@ -221,22 +213,14 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
   m.scenes.forEach((scene, i) => {
     const sceneFrames = Math.round(scene.audioDuration * fps);
     const mode = scene.visualMode ?? 'broll';
-    const overlayScene = mode === 'kinetic' || mode === 'stat' || mode === 'card' || mode === 'glass';
+    const overlayScene = mode === 'kinetic' || mode === 'stat' || mode === 'card'
+      || mode === 'glass' || mode === 'scale' || mode === 'causal';
     // word-synced impact: the graphic enters on the spoken keyword
     const impactF = Math.max(0, Math.min(
       Math.round(Number((scene as any).impactStart ?? 0) * fps),
       Math.max(sceneFrames - fps, 0)));
-    // Dossier schematic and verdict scenes ARE their overlay — the diagram
-    // is the content, not a garnish, so it holds for the whole scene.
-    // (Pilot #2: a 34-second diagram scene showed 5s of card and 29s of
-    // empty gradient. The overlay cap is for punctuation, not chapters.)
-    const overlayIsScene = style.name === 'dossier' &&
-      (Boolean(scene.verdictCard) || mode === 'glass' || mode === 'stat'
-        || ((scene.card as any)?.options?.length ?? 0) >= 2);
-    const overlayFrames = overlayIsScene
-      ? Math.max(1, sceneFrames - impactF)
-      : Math.max(1, Math.min(sceneFrames - impactF,
-          Math.round(overlaySeconds * fps)));
+    const overlayFrames = Math.max(1, Math.min(sceneFrames - impactF,
+      Math.round(overlaySeconds * fps)));
     const isMap = mode === 'map' && scene.map && scene.map.world;
     const motion: MotionSpec = scene.motion ?? {};
     items.push(
@@ -254,6 +238,7 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
               maxShotSeconds={maxShotSeconds}
               sceneN={scene.n}
               style={style}
+              gradeOpacity={vr.gradeOpacity}
             />
           )}
         </CameraRig>
@@ -273,58 +258,35 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
               variant={motion.statVariant} />
           </OverlayWindow>
         ) : null}
-        {mode === 'card' && scene.verdictCard ? (
-          <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
-            <Verdict
-              data={{
-                verdict: m.verdict ?? 'FAILED',
-                settlement: m.settlement?.name,
-                reason: m.verdictReason,
-                outcome: (m as any).verdictOutcome,
-              }}
-              durationInFrames={overlayFrames}
-            />
-          </OverlayWindow>
-        ) : null}
-        {mode === 'card' && !scene.verdictCard
-          && ((scene.card as any)?.options?.length ?? 0) >= 2 ? (
-          // "Two moves left" spoken over nothing was a pilot-review failure —
-          // a choice the audience can't see is a choice they can't feel.
-          <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
-            <TwoChoices options={(scene.card as any).options}
-              kicker={scene.card?.kicker} durationInFrames={overlayFrames} />
-          </OverlayWindow>
-        ) : null}
-        {mode === 'card' && !scene.verdictCard
-          && !((scene.card as any)?.options?.length >= 2)
-          && scene.card && scene.card.headline ? (
+        {mode === 'card' && scene.card && scene.card.headline ? (
           <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
             <EditorialCard card={scene.card} style={style} variant={motion.cardVariant} />
           </OverlayWindow>
         ) : null}
         {mode === 'glass' && scene.glass && (scene.glass.headline || scene.glass.label || scene.glass.location || scene.glass.chapter || scene.glass.value != null) ? (
           <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
-            {style.name === 'dossier' && ((scene.glass as any)?.loop?.length ?? 0) >= 3 ? (
-              <LoopDiagram stages={(scene.glass as any).loop}
-                headline={scene.glass.headline} kicker={scene.glass.kicker}
-                durationInFrames={overlayFrames} />
-            ) : style.name === 'dossier' ? (
-              <Schematic
-                data={{...scene.glass, nodes: m.systems?.map((sy) => ({
-                  name: sy.name,
-                  runs_at: sy.runs_at,
-                  depends_on: sy.depends_on,
-                }))}}
-                durationInFrames={overlayFrames}
-              />
-            ) : (
-              <GlassCard data={scene.glass} style={style} variant={motion.glassVariant} />
-            )}
+            <GlassCard data={scene.glass} style={style} variant={motion.glassVariant} />
           </OverlayWindow>
         ) : null}
-        {!overlayScene && !isMap && scene.title ? (
+        {mode === 'scale' && (scene as any).compare && (scene as any).compare.anchorLabel ? (
+          <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
+            <ScaleComparator data={(scene as any).compare} style={style} />
+          </OverlayWindow>
+        ) : null}
+        {mode === 'causal' && (scene as any).causal && ((scene as any).causal.steps ?? []).length >= 2 ? (
+          <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
+            <CausalDiagram data={(scene as any).causal} style={style} />
+          </OverlayWindow>
+        ) : null}
+        {mode === 'evidence' && (scene as any).evidence && (scene as any).evidence.source ? (
+          <OverlayWindow frames={overlayFrames} fps={fps} from={impactF}>
+            <EvidenceFrame data={(scene as any).evidence} style={style} />
+          </OverlayWindow>
+        ) : null}
+        {!overlayScene && !isMap && mode !== 'evidence' && scene.title ? (
           <AnimatedLowerThird title={scene.title} style={style}
-            variant={motion.lowerThirdVariant} index={scene.n} />
+            variant={motion.lowerThirdVariant} index={scene.n}
+            delay={vr.ltDelay} />
         ) : null}
         <SceneFrame variant={motion.frameVariant} style={style} sceneN={scene.n} />
         {i > 0 ? <LightLeak seed={`scene-${scene.n}`} /> : null}
@@ -342,8 +304,8 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
   items.push(
     <TransitionSeries.Sequence key="outro" durationInFrames={outroFrames}>
       <Outro
-        brandName={m.brandName || 'TERRA INCOGNITA'}
-        tagline={m.brandTagline || "Mapping the world's hidden places"}
+        brandName={m.brandName || 'BHARAT KE RAHASYA'}
+        tagline={m.brandTagline || "भारत के अनसुलझे रहस्यों की पड़ताल"}
         style={style}
         watermarkPath={m.watermarkPath}
       />
@@ -354,36 +316,27 @@ export const Main: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
     <AbsoluteFill style={{backgroundColor: style.bg}}>
       <TransitionSeries>{items}</TransitionSeries>
       <CaptionsLayer captions={m.captions} style={style}
-        compactRanges={overlayRanges} compactYFrac={0.84} sizeBoost={1.15} />
-      {(m as any).truthLabel ? (
-        // The disclosure is SEEN, not just spoken — top-right, first ~7s,
-        // small enough to be honest without being an apology.
-        <Sequence from={Math.round(0.6 * fps)}
-          durationInFrames={Math.round(7 * fps)}>
-          <TruthChip text={String((m as any).truthLabel)} accent={style.accent} />
-        </Sequence>
-      ) : null}
-      <CinematicOverlay />
+        compactRanges={overlayRanges} compactYFrac={0.84} sizeBoost={1.15}
+        variation={vr} />
+      <TextureOverlay style={style} opacityMul={vr.texOpacity} />
       {style.hud ? (
         <TelemetryHUD starts={m.scenes.map((sc) => sc.start ?? 0)}
           accent={style.accent} accent2={style.accent2}
           milestones={milestones} metricLabel={metricLabel}
           metricUnit={metricUnit} />
       ) : hasMetric ? (
-        // clamped to the story — the counter must not haunt the end card
-        <Sequence from={0} durationInFrames={Math.max(
-          Math.round(((m.scenes[m.scenes.length - 1]?.start ?? 0)
-            + (m.scenes[m.scenes.length - 1]?.audioDuration ?? 0)) * fps), 1)}>
-          <MetricReadout milestones={milestones} label={metricLabel}
-            unit={metricUnit} accent={style.accent} />
-        </Sequence>
+        <MetricReadout milestones={milestones} label={metricLabel}
+          unit={metricUnit} accent={style.accent} />
       ) : null}
       <CtaLayer event={m.cta} style={style} fps={fps} />
       {m.watermarkPath ? (
-        <Watermark src={m.watermarkPath} opacity={m.watermarkOpacity ?? 0.08} />
+        <Watermark src={m.watermarkPath} opacity={m.watermarkOpacity ?? 0.08}
+          corner={style.layout?.watermark} />
       ) : null}
-      {m.progressBar ? (
-        <ProgressBar accent={style.accent} marks={chapterMarks} />
+      {m.progressBar && style.layout?.progress !== 'none' ? (
+        <ProgressBar accent={style.accent} marks={chapterMarks}
+          position={style.layout?.progress?.startsWith('bottom') ? 'bottom' : 'top'}
+          thickness={style.layout?.progress === 'bottom-thick' ? 14 : 8} />
       ) : null}
       <SfxLayer events={m.sfx ?? []} fps={fps} />
       <MusicTrack m={m} />

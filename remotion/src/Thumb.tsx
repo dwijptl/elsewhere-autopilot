@@ -1,7 +1,7 @@
 import React from 'react';
 import {AbsoluteFill, Img, staticFile} from 'remotion';
 import type {Manifest} from './Root';
-import {fontFamily} from './elements';
+import {headingFamily} from './elements';
 import {BRAND, getStyle} from './styles';
 
 /** Branded 1280x720 thumbnail template — Hindi-market high-CTR layout:
@@ -50,7 +50,8 @@ export const Thumb: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
   const question = String((m as any).thumbQuestion ?? '').trim();
 
   return (
-    <AbsoluteFill style={{backgroundColor: BRAND.navy, fontFamily}}>
+    <AbsoluteFill style={{backgroundColor: BRAND.navy,
+      fontFamily: headingFamily(style)}}>
       {hero ? (
         hero.kind === 'image' ? (
           <Img src={staticFile(hero.path)}
@@ -80,7 +81,7 @@ export const Thumb: React.FC<{manifest: Manifest}> = ({manifest: m}) => {
           <Img src={staticFile(m.watermarkPath)} style={{width: 26, height: 26}} />
         ) : null}
         <span style={{color: BRAND.text, fontSize: 21, fontWeight: 800,
-          letterSpacing: 4}}>TERRA INCOGNITA</span>
+          letterSpacing: 4}}>BHARAT KE RAHASYA</span>
       </div>
 
       {/* dramatic Devanagari headline, top-right */}

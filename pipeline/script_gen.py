@@ -1,19 +1,11 @@
-"""Stage 1 — case selection + scene-segmented script.
+"""Stage 1 — topic selection + scene-segmented script via Gemini API (free tier).
 
-ELSEWHERE writes one thing: a CIVILIZATION STRESS TEST, set on one persistent
-living planet. Every episode is the same four movements —
+Reads learnings.md (written by the analytics loop) so topic choice, hook
+style, pacing and thumbnail text adapt to what has performed on the channel.
 
-    the settlement's systems  ->  the biome that shaped them
-    ->  one stress event      ->  SURVIVED / ADAPTED / FAILED
-
-— and nothing here may contradict canon/canon.json. The world is the moat, so
-the world is enforced in code: every prompt is built on top of a canon brief,
-every draft is validated against canon before a single second of voice is paid
-for, and the next episode's verdict is STEERED so the channel doesn't decay
-into six collapses in a row.
-
-Reads learnings.md (analytics loop) so hooks, pacing and packaging adapt to
-what has actually performed.
+Language: driven by channel.language in config.yaml. For Hindi (hi-*) all
+viewer-facing text is written in Devanagari, while stock search terms and
+AI image prompts stay in English (libraries are indexed in English).
 """
 import json
 import math
@@ -23,7 +15,7 @@ import time
 
 import requests
 
-import canon as canon_mod
+import retention_lint
 import visual_beats as visual_beats_mod
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -31,6 +23,7 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
 
 _anthropic_available: list | None = None
+ANTHROPIC_MODEL_USED = ""
 
 
 def _anthropic_discover(headers: dict) -> list[str]:
@@ -67,7 +60,11 @@ def _anthropic(prompt: str, cfg: dict, api_key: str) -> str:
     for model in models:
         body = {
             "model": model,
-            "max_tokens": 8000,
+            # the retention-engine schema (retention_plan + per-scene roles/
+            # rewards/payloads) in Devanagari runs ~20-30k chars; 8000 tokens
+            # truncated mid-JSON and every parse failed. Sonnet supports far
+            # larger outputs — give the full script generous headroom.
+            "max_tokens": 32000,
             "temperature": min(float(cfg["llm"].get("temperature", 0.9)), 1.0),
             "system": ("You are a JSON API. Respond with ONLY the requested "
                        "JSON object — no preamble, no markdown fences, no "
@@ -89,6 +86,8 @@ def _anthropic(prompt: str, cfg: dict, api_key: str) -> str:
                     time.sleep(wait)
                     continue
                 r.raise_for_status()
+                global ANTHROPIC_MODEL_USED
+                ANTHROPIC_MODEL_USED = model
                 return r.json()["content"][0]["text"]
             except requests.RequestException as e:
                 last_err = str(e)
@@ -96,16 +95,23 @@ def _anthropic(prompt: str, cfg: dict, api_key: str) -> str:
     raise RuntimeError(f"Anthropic call failed on all models: {last_err}")
 
 
+PROVIDER_USED = ""  # which provider wrote the last CREATIVE call (see _llm)
+
+
 def _llm(prompt: str, cfg: dict, gemini_key: str) -> str:
     """Route to Claude when a key exists (better scripts), else Gemini.
     Any Claude failure silently falls back to Gemini — runs never block."""
+    global PROVIDER_USED
     ak = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     provider = str(cfg["llm"].get("provider", "auto")).lower()
     if ak and provider in ("auto", "anthropic"):
         try:
-            return _anthropic(prompt, cfg, ak)
+            out = _anthropic(prompt, cfg, ak)
+            PROVIDER_USED = f"anthropic:{ANTHROPIC_MODEL_USED or '?'}"
+            return out
         except Exception as e:
             print(f"[script] anthropic failed ({e}) -> gemini fallback")
+    PROVIDER_USED = f"gemini:{cfg['llm'].get('model', '?')}"
     return _gemini(prompt, cfg, gemini_key)
 
 
@@ -172,89 +178,104 @@ def _parse_json(text: str) -> dict:
         raise
 
 
+def _is_hindi(cfg: dict) -> bool:
+    return str(cfg["channel"].get("language", "en-us")).lower().startswith("hi")
+
+
 def _wpm(cfg: dict) -> int:
-    return int(cfg["channel"].get("wpm", 150))
+    # Prefer the pace MEASURED from previous runs' actual TTS (run.py sets
+    # channel.wpm_measured from calibration.json) — the static guess produced
+    # 4:08 videos against 6:15 targets. Falls back to the configured value.
+    measured = cfg["channel"].get("wpm_measured")
+    if measured:
+        return int(measured)
+    return int(cfg["channel"].get("wpm", 130 if _is_hindi(cfg) else 150))
 
 
 def _lang_rules(cfg: dict) -> str:
-    """Channel 2 is English. What used to be a language switch is now the
-    NARRATOR CONTRACT — the single hardest thing to keep stable across a
-    weekly AI pipeline is voice, so it is spelled out in every prompt."""
+    if not _is_hindi(cfg):
+        return ""
     return """
-NARRATOR CONTRACT — this is the whole brand, get it wrong and nothing else matters:
-- English. A field documentary narrator: measured, warm, precise. An engineer's
-  accuracy with a naturalist's affection. Attenborough's restraint, not his
-  awe-voice.
-- NEVER: "Imagine a world where", "But here's the terrifying part", "What
-  happened next will", "Let that sink in", "buckle up", "welcome back",
-  rhetorical questions stacked three deep, or ANY sentence that sounds like a
-  YouTube essay. If a line could open a hype video, delete it.
-- The narrator is not surprised by the planet. They have been here for years.
-  They are explaining, patiently, what went wrong and why it was always going
-  to. Understatement is the register: "The engineers were not careless. They
-  were working from a diagram that was, in one specific way, incomplete."
-- Numbers are said plainly, with units, once. Never rounded up for drama.
-- Every scene ends on a concrete object, temperature, depth or consequence —
-  never on a summary and never on a rhetorical question.
+LANGUAGE — this channel speaks HINDI:
+- narration, title, description, tags, scene titles, kinetic_text and
+  stat.label are ALL in natural spoken Hindi (Devanagari script).
+- EXCEPTION — thumb_text: bold ENGLISH/Hinglish keywords in Latin script
+  ("DEADLY PLANET", "MYSTERY SOLVED", "AAKHIR KYUN?") — English thumbnail
+  keywords outperform Devanagari in the Hindi market.
+- Register: CASUAL spoken Hindi (Hindustani) — the Hindi a 22-year-old in
+  Delhi uses with a friend, NOT शुद्ध/साहित्यिक/textbook Hindi. The viewer
+  should never hit a word they'd have to look up.
+- USE English loanwords in Devanagari wherever urban speakers naturally do:
+  स्पेस, ग्रैविटी, यूनिवर्स, गैलेक्सी, एनर्जी, प्रेशर, टेम्परेचर, स्पीड,
+  ऑर्बिट, एस्ट्रोनॉट, साइंटिस्ट, ब्लैक होल, लाइट, सिग्नल, मशीन.
+- BANNED textbook words → use the everyday word instead:
+  गुरुत्वाकर्षण→ग्रैविटी · आकाशगंगा→गैलेक्सी · परिक्रमा→ऑर्बिट/चक्कर ·
+  खगोलशास्त्री→साइंटिस्ट · अंतरिक्ष यात्री→एस्ट्रोनॉट · ऊष्मा→गर्मी ·
+  दाब→प्रेशर · प्रकाश वर्ष→लाइट ईयर · उत्सर्जित→बाहर फेंकता है ·
+  संकुचित→सिकुड़ता है · अभिकल्पना→आइडिया · अनुनाद→रेज़ोनेंस.
+  (ब्रह्मांड and वैज्ञानिक are fine — common speech.)
+- SELF-TEST for every line: would it sound natural in a WhatsApp voice note
+  to a friend? If any word feels like a school textbook, replace it. Never
+  write full English sentences — mix at the word level only.
+- NUMBERS in narration: Arabic numerals; anything longer than 4 digits gets
+  commas (10,000 not 10000) so the voice reads it as one number.
+- HARD RULE: search_terms and ai_prompt stay in ENGLISH — stock libraries
+  and image models are indexed in English.
+- tags: mostly Hindi, plus 2-4 English tags for search reach.
 """
 
 
 def _style_rules() -> str:
     return """
-WRITING STYLE — a filed report, not a video essay:
-- Rhythm: alternate short declaratives (4-8 words) with longer explanatory
-  sentences. Read it aloud; if a line has no stress pattern, rewrite it.
-- Specificity beats breadth: one mechanism per scene, named, with the number
-  attached. "The exchanger surfaces dropped from 340 to 160 watts per square
-  metre per kelvin" beats "cooling efficiency plummeted".
-- Show the engineering DECISION, not just the outcome. Every failure in this
-  world was a reasonable choice made with incomplete information — that is
-  what makes the format land, and it is why the comments argue.
-- The verdict is never gloated over. It is stated, and then the episode stops.
-"""
+WRITING STYLE — the narration must sound like a PERSON, not a language model.
+Read every line aloud in your head; if a Hindi speaker could not say it
+naturally in one breath to a friend, rewrite it.
 
+BANNED (any language) — these instantly mark a script as AI:
+- Stock openers: "have you ever wondered", "did you know", "imagine a world",
+  "let's dive in", "क्या आप जानते हैं", "आइए जानते हैं", "कल्पना कीजिए" as an
+  opener, "चलिए शुरू करते हैं".
+- Stock transitions: "in conclusion", "निष्कर्ष", "अब बात करते हैं", "गौर करने
+  वाली बात यह है", "यह ध्यान रखना ज़रूरी है", "दिलचस्प बात यह है कि" (more than
+  once), robotic enumeration ("पहला... दूसरा... तीसरा...").
+- Symmetric AI sentence templates repeated across scenes: "यह न सिर्फ X बल्कि
+  Y भी", "X ही नहीं, Y भी", every scene starting with "लेकिन".
+- Empty intensity: "हैरान कर देने वाला", "चौंकाने वाला" without a concrete
+  fact attached in the SAME sentence.
 
-def _canon_rules() -> str:
-    return """
-THE FORMAT SPINE — non-negotiable, every single episode:
-1. SYSTEMS   — what keeps this settlement alive? (heat, water, air, power,
-   food) Name the machine and the number it runs at.
-2. BIOME     — why is the machine built THAT way? The biome is not scenery;
-   it is the reason the engineering exists in the form it does.
-3. STRESS    — ONE event tests ONE hidden dependency. Not a disaster montage.
-   One thing, followed all the way down.
-4. VERDICT   — SURVIVED, ADAPTED or FAILED. Stated once, in near silence.
-
-THE HIDDEN DEPENDENCY is the whole episode. It is the thing two systems shared
-that nobody drew on the same diagram. Find it in the systems map, hide it in
-plain sight during the first third, and let the stress event reveal it.
-
-FICTION DISCLOSURE: the truth label is spoken inside the first 10 seconds and
-appears in the description. We never pretend this is real. The credibility
-promise is the inverse: the PLACE is invented, and every MECHANISM is real.
-A fabricated mechanism is the one unforgivable error on this channel — if you
-cannot name the real-world engineering or biological analogue for something you
-have written, you may not write it.
+HOW A HUMAN NARRATOR ACTUALLY SOUNDS (write like this):
+- Rhythm is uneven ON PURPOSE: a 3-word punch. Then a longer flowing sentence
+  that carries the viewer somewhere. Then a fragment. फिर एक सवाल।
+- The viewer is IN the story — address them as the traveller, repeatedly:
+  "अब आप 4,000 मीटर नीचे हैं। आपकी छाती पर 400 हाथियों का वज़न है।"
+  Use "आप" naturally several times per scene, not once per video.
+- One breath before the big moment: a short quiet line right before a reveal
+  ("और फिर... सिग्नल बदल गया।").
+- Small human asides are allowed once or twice per video ("सच कहूं तो मुझे भी
+  यहीं यकीन नहीं हुआ था").
+- Numbers speak like a person: "करीब 92 बार" not "लगभग 92.0 बार का दबाव
+  अनुभव होता है". Attach every big number to ONE thing the viewer can feel.
+- Real scientists, probes and missions may be NAMED in narration as
+  characters (कहानी के किरदार) — a named person makes evidence human. Never
+  show them via stock lookalikes; visuals stay environment/archive/AI.
+- Every scene ends on a concrete image, place, number or question — never an
+  abstraction or a summary.
+- Specificity beats breadth: one vivid, named fact per scene instead of three
+  vague claims. Voice: confident, a little amused, zero lecture tone.
 """
 
 
 def _ai_max(cfg: dict) -> int:
-    """AI-image budget per episode.
-
-    INVERSION vs channel 1: a fictional planet has no stock footage, so AI
-    stills are the PRIMARY visual source, not the garnish. A 6-7 minute episode
-    is carried by 12-16 stills."""
+    """AI-image budget per video — richer when a FLUX (fal.ai) key is set."""
     aicfg = cfg.get("ai_images", {})
     if os.environ.get("FAL_KEY", "").strip():
-        return int(aicfg.get("max_per_video_flux", 16))
-    return int(aicfg.get("max_per_video", 8))
+        return int(aicfg.get("max_per_video_flux",
+                             max(int(aicfg.get("max_per_video", 2)), 4)))
+    return int(aicfg.get("max_per_video", 2))
 
 
-# ai_image is the default mode. 'schematic' replaces channel 1's glass panel
-# (an engineering dossier diagram, not a liquid-glass HUD), 'atlas' replaces
-# the real-world map, and 'verdict' is the SURVIVED/ADAPTED/FAILED card.
-VALID_MODES = ("ai_image", "motion", "schematic", "atlas", "kinetic", "stat",
-               "card", "verdict", "broll")
+VALID_MODES = ("broll", "ai_image", "kinetic", "stat", "card", "map", "glass",
+               "scale", "causal", "evidence")
 
 
 def _num_or_none(value):
@@ -315,12 +336,6 @@ def _normalize_glass(raw) -> dict:
         result["value"] = value
     if delta is not None:
         result["delta"] = delta
-    # A feedback loop drawn as a circle of stages — the dossier's answer to
-    # "the essential loop is never shown" (pilot review). 3-6 short labels.
-    if isinstance(data.get("loop"), list):
-        loop = [str(x)[:26] for x in data["loop"] if str(x).strip()][:6]
-        if len(loop) >= 3:
-            result["loop"] = loop
     direction = str(data.get("delta_direction", data.get("deltaDirection", ""))).lower()
     if direction in ("up", "down", "flat"):
         result["deltaDirection"] = direction
@@ -338,46 +353,107 @@ def _normalize_milestone(raw) -> dict:
             "unit": str(data.get("unit", ""))[:8]}
 
 
+def _int_or_none(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_compare(raw) -> dict:
+    """Scale anchor: one unfamiliar number against one familiar unit."""
+    data = raw if isinstance(raw, dict) else {}
+    value = _num_or_none(data.get("value"))
+    anchor = _num_or_none(data.get("anchor_value", data.get("anchorValue")))
+    if value is None or anchor is None or anchor <= 0:
+        return {}
+    return {"value": value,
+            "unit": str(data.get("unit", ""))[:16],
+            "label": str(data.get("label", ""))[:60],
+            "anchorLabel": str(data.get("anchor_label",
+                                        data.get("anchorLabel", "")))[:40],
+            "anchorValue": anchor,
+            "anchorUnit": str(data.get("anchor_unit",
+                                       data.get("anchorUnit", "")))[:16]}
+
+
+def _normalize_causal(raw) -> dict:
+    """Mechanism chain A -> B -> C with 2-6 short steps."""
+    data = raw if isinstance(raw, dict) else {}
+    steps = [str(s).strip()[:60] for s in (data.get("steps") or [])
+             if str(s).strip()][:6]
+    if len(steps) < 2:
+        return {}
+    return {"headline": str(data.get("headline", ""))[:80], "steps": steps}
+
+
+def _normalize_evidence(raw) -> dict:
+    """Named-source frame with an honest confidence tag."""
+    data = raw if isinstance(raw, dict) else {}
+    source = str(data.get("source", "")).strip()[:90]
+    if not source:
+        return {}
+    conf = str(data.get("confidence", "")).strip()
+    if conf not in ("पुष्टि", "अनुमान", "विवादित"):
+        conf = ""
+    return {"kicker": str(data.get("kicker", ""))[:24],
+            "headline": str(data.get("headline", ""))[:80],
+            "source": source,
+            "date": str(data.get("date", ""))[:24],
+            "confidence": conf}
+
+
+def _normalize_retention_plan(raw, n_scenes: int) -> dict:
+    """Bound the machine-readable story contract (see retention_lint.py)."""
+    data = raw if isinstance(raw, dict) else {}
+    loops = []
+    for lp in (data.get("open_loops") or [])[:4]:
+        if not isinstance(lp, dict) or not str(lp.get("question", "")).strip():
+            continue
+        loops.append({
+            "question": str(lp.get("question", ""))[:140],
+            "opens_scene": _int_or_none(lp.get("opens_scene")),
+            "partial_scene": _int_or_none(lp.get("partial_scene")),
+            "closes_scene": _int_or_none(lp.get("closes_scene")),
+        })
+    reveal_scene = _int_or_none(data.get("main_reveal_scene"))
+    if reveal_scene is not None and not 1 <= reveal_scene <= n_scenes:
+        reveal_scene = None
+    return {
+        "core_question": str(data.get("core_question", ""))[:160],
+        "viewer_assumption": str(data.get("viewer_assumption", ""))[:160],
+        "first_reversal": str(data.get("first_reversal", ""))[:160],
+        "main_reveal": str(data.get("main_reveal", ""))[:200],
+        "main_reveal_scene": reveal_scene,
+        "open_loops": loops,
+    }
+
+
 def _normalize(script: dict, min_scenes: int) -> dict:
     """Validate + default-fill a script dict. Raises on structural problems."""
     assert isinstance(script["scenes"], list) and len(script["scenes"]) >= min_scenes
     for s in script["scenes"]:
         assert s["narration"].strip()
-        s.setdefault("visual_mode", "ai_image")
+        s.setdefault("visual_mode", "broll")
         if s["visual_mode"] not in VALID_MODES:
-            s["visual_mode"] = "ai_image"
-
-        # ── vocabulary bridge ────────────────────────────────────────────
-        # The SCRIPT speaks channel 2's language (schematic / atlas / verdict /
-        # motion). The renderer and asset stages still speak the proven
-        # channel-1 contract (glass / map / card). Translating here — once, at
-        # the boundary — buys the new format without forking 2,000 lines of
-        # working plumbing. The panels look nothing alike; only the data shape
-        # is shared.
-        mode = s["visual_mode"]
-        if mode == "motion":
-            s["visual_mode"] = "ai_image"
-            s["hero_motion"] = True      # picked up by the Wan/fal motion stage
-        elif mode == "schematic":
-            s["visual_mode"] = "glass"   # rendered by the dossier schematic
-        elif mode == "atlas":
-            s["visual_mode"] = "map"     # rendered by the fictional atlas
-        elif mode == "verdict":
-            s["visual_mode"] = "card"
-            s["verdict_card"] = True
-        s.setdefault("hero_motion", False)
-        s.setdefault("verdict_card", False)
-
+            s["visual_mode"] = "broll"
         s.setdefault("search_terms", [])
         s.setdefault("ai_prompt", "")
         s.setdefault("kinetic_text", "")
         s["stat"] = _normalize_stat(s.get("stat"))
-        s["glass"] = _normalize_glass(s.get("schematic") or s.get("glass"))
-        s["schematic"] = s["glass"]
+        s["glass"] = _normalize_glass(s.get("glass"))
+        s["compare"] = _normalize_compare(s.get("compare"))
+        s["causal"] = _normalize_causal(s.get("causal"))
+        s["evidence"] = _normalize_evidence(s.get("evidence"))
+        # a mode whose payload failed validation degrades to plain footage
+        if s["visual_mode"] == "scale" and not s["compare"]:
+            s["visual_mode"] = "broll"
+        if s["visual_mode"] == "causal" and not s["causal"]:
+            s["visual_mode"] = "broll"
+        if s["visual_mode"] == "evidence" and not s["evidence"]:
+            s["visual_mode"] = "broll"
         s.setdefault("card", {})
-        atlas = s.get("atlas") or s.get("map") or {}
-        s["atlas"] = atlas
-        s["map"] = atlas
+        s.setdefault("map", {})
         s["milestone"] = _normalize_milestone(s.get("milestone"))
         d = str(s.get("delivery", "calm")).lower().strip()
         s["delivery"] = d if d in ("hook", "calm", "reveal", "urgent") else "calm"
@@ -386,7 +462,19 @@ def _normalize(script: dict, min_scenes: int) -> dict:
                                              "measurement") else "")
         s["must_show"] = [str(t)[:40] for t in (s.get("must_show") or [])
                           if str(t).strip()][:3]
+        nrole = str(s.get("narrative_role", "")).lower().strip()
+        s["narrative_role"] = nrole if nrole in retention_lint.ROLES else ""
+        reward = s.get("reward") if isinstance(s.get("reward"), dict) else {}
+        strength = _num_or_none(reward.get("strength"))
+        s["reward"] = {"type": str(reward.get("type", ""))[:24],
+                       "strength": (min(max(strength, 0.0), 1.0)
+                                    if strength is not None else 0.0)}
+        s["question_out"] = str(s.get("question_out", ""))[:140]
     script["scenes"][0]["delivery"] = "hook"
+    if not script["scenes"][0]["narrative_role"]:
+        script["scenes"][0]["narrative_role"] = "hook"
+    script["retention_plan"] = _normalize_retention_plan(
+        script.get("retention_plan"), len(script["scenes"]))
     assert script["title"].strip()
     script.setdefault("thumb_text", script["title"][:30])
     script.setdefault("thumb_prompt", "")
@@ -410,43 +498,6 @@ def _normalize(script: dict, min_scenes: int) -> dict:
             thumbs.append({"text": str(item.get("text", ""))[:30],
                            "concept": str(item.get("concept", ""))[:120]})
     script["thumb_options"] = thumbs
-
-    # ── the stress-test spine (channel 2's reason to exist) ──────────────
-    script["verdict"] = str(script.get("verdict", "")).upper().strip()
-    script["region"] = str(script.get("region", ""))[:12]
-    script["series"] = str(script.get("series", "stress_test"))[:20]
-    settlement = script.get("settlement") or {}
-    script["settlement"] = {
-        "name": str(settlement.get("name", ""))[:40],
-        "premise": str(settlement.get("premise", ""))[:240],
-        "population": _num_or_none(settlement.get("population")),
-    }
-    script["systems"] = [
-        {"name": str(sy.get("name", ""))[:24],
-         "how": str(sy.get("how", ""))[:200],
-         "runs_at": str(sy.get("runs_at", ""))[:40],
-         # two systems naming the same depends_on IS the hidden dependency.
-         # The schematic renders it as one shared node; the audience finds it
-         # before the narrator names it.
-         "depends_on": str(sy.get("depends_on", ""))[:40]}
-        for sy in (script.get("systems") or []) if isinstance(sy, dict)
-    ][:5]
-    script["hidden_dependency"] = str(script.get("hidden_dependency", ""))[:300]
-    stress = script.get("stress_event") or {}
-    script["stress_event"] = {
-        "name": str(stress.get("name", ""))[:60],
-        "trigger": str(stress.get("trigger", ""))[:200],
-        "cascade": [str(c)[:120] for c in (stress.get("cascade") or [])][:6],
-    }
-    script["verdict_reason"] = str(script.get("verdict_reason", ""))[:300]
-    script["real_world_basis"] = [str(b)[:160] for b in
-                                  (script.get("real_world_basis") or [])][:6]
-    script["truth_label_spoken"] = bool(script.get("truth_label_spoken", False))
-    script["canon_refs"] = [str(r)[:40] for r in (script.get("canon_refs") or [])][:12]
-    additions = script.get("canon_additions") or {}
-    script["canon_additions"] = {
-        k: (additions.get(k) or []) for k in ("settlements", "organisms", "regions")
-    }
     return script
 
 
@@ -456,28 +507,30 @@ def _critique(script: dict, cfg: dict, api_key: str, kind: str,
     Fail-open: any problem returns the original draft."""
     if not cfg["llm"].get("critique", True):
         return script
-    fmt = ("a ~28-second vertical Short (hook <= 12 words; full PAYOFF, then "
-           "a loop-friendly final line)" if kind == "short"
+    fmt = ("a 40-55 second vertical Short (hook <= 12 words; full PAYOFF, "
+           "a meaningful close, and no dangling final fragment)" if kind == "short"
            else "a 6-minute documentary (30s hook, mid-video re-hook, payoff ending)")
-    prompt = f"""You are a ruthless retention editor for ELSEWHERE, a
-speculative-documentary channel. Below is a draft script for {fmt}.
+    prompt = f"""You are a ruthless retention editor for a Hindi faceless
+YouTube channel. Below is a draft script for {fmt}.
 
-Grade every scene 1-10 on: hook strength, MECHANISM specificity (a named
-system, a real number, a consequence you can picture), curiosity pull into
-the NEXT scene, and sentence rhythm. Then REWRITE any scene scoring below 8.
+Grade every scene 1-10 on ALL of:
+- hook strength and specificity (named places and numbers a viewer can picture);
+- curiosity pull into the NEXT scene (would a viewer predict the next line?
+  if yes, the scene fails — break the prediction);
+- HUMAN VOICE: read the narration aloud in your head. AI tells that force a
+  rewrite: uniform sentence rhythm across scenes, stock transitions ("अब बात
+  करते हैं", "गौर करने वाली बात"), symmetric templates ("X ही नहीं, Y भी")
+  repeated, empty intensity words without a concrete fact, zero direct
+  address. A human narrator talks TO the viewer ("आप"), varies rhythm on
+  purpose, and lands each scene on something you can see or feel;
+- emotion: the strongest fact of the scene must produce a nameable feeling
+  (awe / fear / scale / disbelief) — "interesting" is not a feeling.
 
-The two failure modes you are hunting:
-  (a) VIDEO-ESSAY VOICE — hype, rhetorical questions, "here's the crazy part".
-      Cut it to the bone. The narrator is calm and has been on this planet for
-      years.
-  (b) VAGUE ENGINEERING — "the cooling system failed" is not a scene. WHICH
-      surface, at WHAT temperature, losing HOW much capacity, over WHAT period.
-      The audience is here for the machine.
-
-Keep the same JSON schema, scene count, visual_mode, and every structural field
-(settlement, systems, stress_event, hidden_dependency, verdict, region,
-canon_refs, canon_additions). You may improve narration, titles, kinetic_text,
-delivery and thumbnail text — nothing else.
+REWRITE any scene scoring below 8 — sharper verbs, more concrete nouns,
+tighter sentences, zero filler, natural spoken Hindi. Keep the same JSON
+schema, scene count, visual_mode, search_terms, narrative_role and
+retention_plan (you may improve narration, titles, kinetic_text, delivery,
+question_out, reward and thumb_text).
 {_lang_rules(cfg)}
 Return ONLY the full revised JSON — no scores, no commentary.
 
@@ -489,25 +542,20 @@ DRAFT:
         # first pass's structured visual data so a rewrite cannot silently turn
         # a stat/glass/map scene into an empty overlay.
         for before, after in zip(script["scenes"], revised["scenes"]):
-            # both halves of the vocabulary bridge must be preserved: the
-            # script speaks 'schematic'/'atlas', the renderer reads
-            # 'glass'/'map'. Preserving only one leaves the renderer with an
-            # empty panel and no error — the worst kind of failure.
-            for field in ("stat", "card", "schematic", "glass", "atlas", "map",
-                          "milestone", "must_show", "visual_role",
-                          "hero_motion", "verdict_card"):
+            for field in ("stat", "card", "glass", "map", "milestone",
+                          "compare", "causal", "evidence",
+                          "must_show", "visual_role", "narrative_role"):
                 after[field] = before.get(field, after.get(field, {}))
+            if not str(after.get("question_out", "")).strip():
+                after["question_out"] = before.get("question_out", "")
         for field in ("premise", "changing_variable", "hero_prompt",
                       "forbidden_visuals", "title_options", "thumb_options",
-                      "thumb_headline", "thumb_question", "next_tease_topic",
-                      # the spine survives the critique untouched — a retention
-                      # editor does not get to rewrite canon
-                      "verdict", "verdict_reason", "region", "series",
-                      "settlement", "systems", "stress_event",
-                      "hidden_dependency", "real_world_basis", "canon_refs",
-                      "canon_additions", "truth_label_spoken"):
+                      "thumb_headline", "thumb_question", "next_tease_topic"):
             if not revised.get(field):
                 revised[field] = script.get(field, revised.get(field))
+        if not (revised.get("retention_plan") or {}).get("core_question"):
+            revised["retention_plan"] = script.get("retention_plan",
+                                                   revised.get("retention_plan"))
         revised["topic"] = script.get("topic", "")
         print("[script] critique pass applied")
         return revised
@@ -536,6 +584,93 @@ def load_learnings(repo_root: str) -> str:
     return text.strip()
 
 
+
+# ── Variety engine (YouTube inauthentic-content policy, bucket 1) ────────
+# "Content made with a template with little to no variation across videos"
+# is ineligible for monetization. A pipeline naturally collapses into one
+# winning formula, so variety is ENFORCED here rather than hoped for:
+# the title FORM and the topic FAMILY both rotate deterministically, and a
+# deterministic check rejects a title that reuses the previous frame.
+
+TITLE_FORMS = [
+    ("question", "a direct question the viewer wants answered "
+                 "(\u0915\u094d\u092f\u093e \u0939\u094b\u0917\u093e / \u0915\u094d\u092f\u094b\u0902)"),
+    ("claim", "a flat declarative claim that sounds impossible but is true "
+              "\u2014 NO question mark anywhere in the title"),
+    ("number", "lead with one shocking number as the first characters"),
+    ("contradiction", "two facts in tension, joined by \u0932\u0947\u0915\u093f\u0928/\u092b\u093f\u0930 \u092d\u0940"),
+    ("scene", "drop the viewer into a moment, present tense, no question"),
+    ("verdict", "state the outcome up front, then who/what it happens to"),
+]
+
+# Topic families — no single family may dominate the channel.
+TOPIC_FAMILIES = {
+    "survival_timeline": ["\u0936\u0930\u0940\u0930", "\u092e\u093f\u0928\u091f", "\u0918\u0902\u091f", "\u0938\u0947\u0915\u0902\u0921",
+                          "body", "survive", "minute", "hour"],
+    "vanishing_whatif": ["\u0905\u0917\u0930", "\u0917\u093e\u092f\u092c", "what if", "vanish", "disappear"],
+    "mystery_investigation": ["\u0930\u0939\u0938\u094d\u092f", "\u0916\u094b\u091c", "mystery", "discover", "unexplained"],
+    "scale_comparison": ["\u0924\u0941\u0932\u0928", "\u0917\u0941\u0928\u093e", "\u092c\u0921\u093c\u093e", "scale", "compare", "size"],
+    "disagreement": ["\u0935\u0948\u091c\u094d\u091e\u093e\u0928\u093f\u0915", "\u092c\u0939\u0938", "disagree", "debate", "theory"],
+}
+FAMILY_CAP = 0.40   # no family may exceed this share of recent output
+
+
+def _title_form(done_count: int) -> tuple:
+    return TITLE_FORMS[done_count % len(TITLE_FORMS)]
+
+
+def _frame_signature(title: str) -> str:
+    """Structural fingerprint of a title: the trailing phrase with all digits
+    and Latin words stripped. Two titles that differ only in their nouns and
+    numbers collapse to the same signature."""
+    t = re.sub(r"[0-9\u0966-\u096F,.\u2212\-\u00b0%]+", "", str(title))
+    t = re.sub(r"[A-Za-z]+", "", t)
+    words = [w for w in t.replace("?", " ").replace(":", " ").split() if w]
+    return " ".join(words[-4:]).strip()
+
+
+def _family_of(topic: str) -> str:
+    low = str(topic).lower()
+    for fam, keys in TOPIC_FAMILIES.items():
+        if any(k.lower() in low for k in keys):
+            return fam
+    return "other"
+
+
+def _overused_families(done: list, window: int = 10) -> list:
+    recent = [t for t in done[-window:] if t]
+    if len(recent) < 4:
+        return []
+    counts = {}
+    for t in recent:
+        fam = _family_of(t)
+        counts[fam] = counts.get(fam, 0) + 1
+    return [f for f, c in counts.items()
+            if f != "other" and c / len(recent) > FAMILY_CAP]
+
+
+def _variety_rules(done: list, done_count: int) -> str:
+    """Prompt block that forces this video away from the last one's shape."""
+    form, how = _title_form(done_count)
+    recent_sigs = [_frame_signature(t) for t in done[-3:] if t]
+    banned = "\n".join(f'  - "{s}"' for s in recent_sigs if s)
+    over = _overused_families(done)
+    fam_note = ""
+    if over:
+        fam_note = (f"\nOVER-USED FAMILIES (do NOT write another one of these): "
+                    f"{', '.join(over)}. Pick a DIFFERENT angle: an "
+                    f"investigation, a scale comparison, a scientific "
+                    f"disagreement, or a single-object deep dive.\n")
+    return f"""
+TITLE VARIETY (mandatory \u2014 the channel must not look templated):
+- This video's title FORM is **{form}**: {how}.
+- The title must NOT end with the same phrase-shape as the last videos:
+{banned or "  (no history yet)"}
+  Reusing a trailing frame like "...\u0915\u0947 \u0938\u093e\u0925 \u0915\u094d\u092f\u093e \u0939\u094b\u0917\u093e?" across videos is BANNED.
+- Vary sentence length and rhythm from the previous title.
+{fam_note}"""
+
+
 def pick_topic(cfg: dict, api_key: str, done_file: str = "topics_done.txt",
                learnings: str = "") -> str:
     forced = os.environ.get("FORCED_TOPIC", "").strip()
@@ -554,66 +689,65 @@ def pick_topic(cfg: dict, api_key: str, done_file: str = "topics_done.txt",
                     tease = ln[5:].strip()  # last marker wins
                 else:
                     done.append(ln)
-    # honor the previous episode's on-screen tease — the video made a promise
+    # honor a manual NEXT: override the owner added to topics_done.txt
     if tease and tease not in done:
-        print(f"[script] honoring previous episode's on-screen tease: {tease}")
+        print(f"[script] honoring manual NEXT: override: {tease}")
         return tease
 
     learn_block = (f"\nWHAT HAS WORKED ON THIS CHANNEL (analytics digest):\n{learnings}\n"
                    if learnings else "")
-    world = canon_mod.load(os.path.dirname(os.path.dirname(
-        os.path.abspath(done_file))) if os.path.isabs(done_file) else ".")
-    steer = canon_mod.steer_verdict(world, cfg)
-    prompt = f"""You are the showrunner of ELSEWHERE — a speculative
-documentary channel that stress-tests civilizations on ONE persistent,
-original, openly-fictional planet.
+    lang_note = ("\nWrite the topic itself in Hindi (Devanagari script).\n"
+                 if _is_hindi(cfg) else "")
+    over = _overused_families(done)
+    _family_block = ""
+    if over:
+        _family_block = (
+            f"\nTOPIC FAMILY BALANCE \u2014 the channel has over-used: "
+            f"{', '.join(over)}. At least TWO of your three candidates must "
+            f"come from a DIFFERENT family (investigation / scale comparison / "
+            f"scientific disagreement / single-object deep dive). Repeating one "
+            f"formula makes the channel ineligible for monetization.\n")
+        print(f"[script] variety: steering away from over-used families: {over}")
+    prompt = f"""You are the content strategist for a faceless YouTube channel.
 
-{canon_mod.brief(world)}
-
-FORMAT (every episode, no exceptions): a settlement's SYSTEMS -> the BIOME that
-shaped them -> ONE STRESS EVENT that tests ONE hidden dependency -> a VERDICT
-of SURVIVED, ADAPTED or FAILED.
-{_canon_rules()}
+NICHE: {cfg['channel']['niche']}
 AUDIENCE: {cfg['channel']['audience']}
 {learn_block}
-Cases already documented (NEVER repeat or closely paraphrase these):
+Already-covered topics (NEVER repeat or closely paraphrase these, in any
+language):
 {json.dumps(done[-100:], indent=0, ensure_ascii=False)}
 
-VERDICT QUOTA — the next episode must end in: {steer}
-This is not a suggestion. Left unchecked, this format decays into six
-collapses in a row, and a channel where everything dies is a channel where
-nothing is at stake. Invent a case whose HONEST outcome is {steer}.
+{_family_block}
+Invent THREE candidate video topics with strong curiosity-gap appeal that can
+be illustrated with stock footage of landscapes, cities, nature, aerials and
+oceans plus occasional AI-generated stills (no specific people, no events
+needing news footage, nothing requiring licensed material). If the analytics
+digest above shows a topic family performing well, lean into that family
+without repeating covered topics.
 
-Invent THREE candidate cases — a new settlement on a REVEALED region of the
-atlas, each with a system worth explaining and a dependency worth hiding.
-
-THE STRESS-TEST SCORECARD — score each candidate 1-10 on ALL of:
-- machine: is there ONE system a viewer can hold in their head and draw?
-- dependency: is the hidden coupling genuinely non-obvious, and genuinely fair
-  (visible in hindsight, invisible in foresight)? THIS IS THE MOST IMPORTANT
-  SCORE. A dependency the audience guesses at minute two is a dead episode.
-- escalation: does the stress produce 5+ measurable, monotonic steps
-  (a temperature, a pressure, a population, a reserve, falling or rising)?
-- biome_lock: could this case ONLY happen on this planet, given its physics?
-  A case that would work identically on Earth is a rejected case.
-- reality: does every mechanism have a REAL, citable Earth analogue
-  (engineering, chemistry, biology, materials)? Name it.
-- debate: will the comments argue about whether the engineers were stupid or
-  unlucky? (If everyone agrees, the episode has no comment section.)
-- thumbnail: can it be drawn as ONE image that promises the premise?
-- canon: does it deepen the world without contradicting a single line above?
-- honest_verdict: does the case genuinely end in {steer} without cheating?
-
-REJECT any candidate that needs a mechanism you cannot ground in real science
-(reality <= 5), that would work unchanged on Earth (biome_lock <= 5), or whose
-verdict has to be forced (honest_verdict <= 5).
-
+THE VISUAL JOURNEY TEST — score each candidate 1-10 on ALL of:
+- journey: is there ONE changing variable the viewer travels along
+  (depth, speed, time, temperature, scale)?
+- escalation: can it produce 6+ visibly escalating milestones?
+- number_hook: does it contain one concrete, quotable number?
+- human_stakes: is there a consequence a viewer can feel on their own body/city?
+- visual: does something VISIBLY change on screen every 30 seconds?
+- thumbnail: can it be drawn as ONE dramatic image?
+- feasibility: can stock footage + AI stills TRUTHFULLY illustrate it
+  (no reenactments, no specific people, no news footage)?
+- source_confidence: are its core facts well-established and easy to verify
+  with primary scientific/government sources?
+- sequel: does it naturally open an obvious next-episode question?
+A topic that is a list of facts ("types of X") must score low on journey.
+REJECT any candidate that is interesting but cannot be shown truthfully
+(feasibility <= 4) or whose central claim cannot be verified
+(source_confidence <= 4) — an accurate, filmable topic beats a viral,
+unfilmable one.
+{lang_note}
 Return JSON exactly:
-{{"candidates": [{{"topic": "the episode's working title — a premise, never the
-planet's name", "settlement": "...", "region": "REG-0X", "machine": "one line",
-"hidden_dependency": "one line", "verdict": "{steer}",
-"scores": {{"machine": 0, "dependency": 0, "escalation": 0, "biome_lock": 0,
-"reality": 0, "debate": 0, "thumbnail": 0, "canon": 0, "honest_verdict": 0}},
+{{"candidates": [{{"topic": "...", "scores": {{"journey": 0, "escalation": 0,
+"number_hook": 0, "human_stakes": 0, "visual": 0, "thumbnail": 0,
+"feasibility": 0, "source_confidence": 0, "sequel": 0}},
 "total": 0}}],
 "topic": "<the candidate with the highest total>"}}"""
     last_err = None
@@ -690,138 +824,374 @@ SCENES:
         return visual_beats_mod.normalize_plan(script, None, cfg)
 
 
+def _reconcile_display_numbers(script: dict, report: dict, cfg: dict) -> dict:
+    """Deterministic last resort for claim_display_mismatch (C9), applied
+    AFTER the LLM repair loop and BEFORE TTS: a displayed number the
+    narration never speaks is removed from the screen. Screen and voice must
+    agree — when the repair could not make the voice say the number, the
+    screen stops showing it. Milestones simply hide for that scene; a
+    stat/compare scene whose narration has no number falls back to broll
+    (this runs pre-assets, so the fallback renders normally). Fail-open."""
+    codes = {v.get("code") for v in report.get("violations", [])}
+    if "claim_display_mismatch" not in codes:
+        return report
+    fixed = []
+    for i, s in enumerate(script.get("scenes", [])):
+        narration = str(s.get("narration", ""))
+        for field in ("stat", "compare", "milestone"):
+            payload = s.get(field) or {}
+            value = payload.get("value")
+            variants = retention_lint._num_variants(value)
+            try:
+                if not variants or float(value) == 0:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            if any(v in narration for v in variants):
+                continue
+            s[field] = {}
+            if field in ("stat", "compare") and s.get("visual_mode") == field:
+                s["visual_mode"] = "broll"
+            fixed.append(f"scene {i + 1} {field}={value:g}")
+    if fixed:
+        print("[retention] reconciled unspoken display numbers (screen now "
+              "agrees with voice): " + "; ".join(fixed))
+        report = retention_lint.lint(script, cfg)
+    return report
+
+
+def _retention_pass(script: dict, cfg: dict, api_key: str, topic: str) -> dict:
+    """Deterministic story audit + bounded repair loop (pre-TTS, so repairs
+    are free). Fail-open: the final report travels on the script and run.py
+    decides whether a failure drafts or blocks the release."""
+    rcfg = cfg.get("retention", {})
+    if not rcfg.get("enabled", True):
+        return script
+    report = retention_lint.lint(script, cfg)
+    revisions = int(rcfg.get("max_revisions", 2))
+    for attempt in range(revisions):
+        if report["passed"]:
+            break
+        print(f"[retention] {len(report['violations'])} violation(s) — "
+              f"repair pass {attempt + 1}/{revisions}: "
+              + ", ".join(sorted({v["code"] for v in report["violations"]})))
+        try:
+            fixed = _normalize(_parse_json(_llm(
+                retention_lint.repair_prompt(script, report, cfg,
+                                             _lang_rules(cfg)),
+                cfg, api_key)), 4)
+            # keep visual payloads unless the repair legitimately changed them
+            # (engine_flat repairs MUST rewrite milestones, so no blanket copy)
+            for before, after in zip(script["scenes"], fixed["scenes"]):
+                for field in ("stat", "card", "glass", "map",
+                              "compare", "causal", "evidence"):
+                    if not after.get(field) and before.get(field):
+                        after[field] = before[field]
+            for field in ("premise", "changing_variable", "hero_prompt",
+                          "forbidden_visuals", "title_options", "thumb_options",
+                          "thumb_headline", "thumb_question",
+                          "next_tease_topic", "word_budget"):
+                if not fixed.get(field):
+                    fixed[field] = script.get(field)
+            fixed["topic"] = topic
+            script = fixed
+        except Exception as exc:
+            print(f"[retention] repair pass failed ({exc}) — keeping draft")
+            break
+        report = retention_lint.lint(script, cfg)
+    report = _reconcile_display_numbers(script, report, cfg)
+    status = "PASSED" if report["passed"] else "FAILED"
+    print(f"[retention] story audit {status} — "
+          f"reveal at {report['metrics'].get('reveal_fraction')}, "
+          f"{report['metrics'].get('open_loops', 0)} loops, "
+          f"{len(report['violations'])} open violation(s)")
+    script["retention_report"] = report
+    return script
+
+
+def _done_titles(done_file: str) -> list:
+    """Titles/topics already shipped — drives title-form + family rotation."""
+    out = []
+    try:
+        with open(done_file, encoding="utf-8") as f:
+            for ln in f:
+                ln = ln.strip()
+                if ln and not ln.startswith("#") and not ln.startswith("NEXT:"):
+                    out.append(ln)
+    except OSError:
+        pass
+    return out
+
+
+def _enforce_title_variety(script: dict, done: list) -> None:
+    """Deterministic backstop for the prompt rule: if the new title reuses a
+    trailing frame from the last 3 videos, promote a title_option that does
+    not. Fail-open — never blocks a render."""
+    recent = {_frame_signature(t) for t in done[-3:] if t}
+    title = str(script.get("title", ""))
+    if not recent or _frame_signature(title) not in recent:
+        return
+    for alt in (script.get("title_options") or []):
+        if _frame_signature(alt) not in recent:
+            print(f"[script] title variety: '{title[:40]}...' reused a recent "
+                  f"frame -> swapped to '{alt[:40]}...'")
+            script["title_options"] = [title] + [
+                t for t in script["title_options"] if t != alt]
+            script["title"] = alt
+            return
+    print(f"[script] WARNING: title reuses a recent frame and no alternate "
+          f"differs \u2014 shipping as-is: {title[:60]}")
+
+
+def _skeleton_block(done_count: int) -> tuple:
+    """(name, prompt block) for this episode's narrative shape."""
+    name = retention_lint.skeleton_for(done_count)
+    s = retention_lint.SKELETONS[name]
+    lo, hi = s["reveal_window"]
+    roles = ", ".join(f"'{r}'" for r in s["must_include"])
+    return name, f"""
+NARRATIVE SHAPE for THIS episode: **{name}** — {s['note']}.
+- The main reveal must land between {lo:.0%} and {hi:.0%} of the script.
+- At least one scene must carry narrative_role {roles}.
+- Do NOT default to the build-up-then-reveal shape unless it is named above;
+  the channel rotates shapes so consecutive videos are structurally different.
+"""
+
+
 def generate_script(cfg: dict, topic: str, api_key: str, learnings: str = "",
-                    script_hint: dict | None = None) -> dict:
-    script_hint = script_hint or {}
+                    done: list | None = None) -> dict:
     v = cfg["video"]
+    done = done if done is not None else []
+    skel_name, skel_block = _skeleton_block(len(done))
     wpm = _wpm(cfg)
     words = int(v["target_minutes"] * wpm)
     ai_max = _ai_max(cfg)
-    motion_max = int(cfg.get("motion", {}).get("max_per_video", 2))
     learn_block = (f"\nCHANNEL LEARNINGS — apply these to hook style, pacing, and "
                    f"thumbnail text:\n{learnings}\n" if learnings else "")
-    world = canon_mod.load(".")
-    steer = str(script_hint.get("verdict") or canon_mod.steer_verdict(world, cfg)).upper()
-    prompt = f"""You are the writer of ELSEWHERE — a speculative documentary
-channel (voiceover + AI-generated field photography + dossier graphics, no
-on-camera host). You are writing one CIVILIZATION STRESS TEST.
+    prompt = f"""You are a scriptwriter for a faceless YouTube channel
+(voiceover + b-roll + motion graphics + captions, no on-camera host).
 
-CASE: {topic}
-TARGET: ~{words} spoken words (about {v['target_minutes']} minutes at {wpm} wpm)
+TOPIC: {topic}
+TARGET: ~{words} spoken words total (about {v['target_minutes']} minutes at {wpm} wpm)
 HARD RANGE: {int(words * 0.92)}-{int(words * 1.08)} spoken words across all
-scenes. Count before returning; expand thin scenes with mechanism, never filler.
-
-{canon_mod.brief(world)}
-{_canon_rules()}
-THIS EPISODE'S VERDICT IS: {steer}
-Write the case honestly toward that ending. Do not cheat it, do not soften it,
-and do not reveal it early — the verdict lands in the final 40 seconds.
-
+scenes. Under {int(words * 0.92)} produces a video shorter than promised;
+count your words before returning and expand thin scenes with concrete
+material (never filler).
 TONE: {cfg['channel']['tone']}
 AUDIENCE: {cfg['channel']['audience']}
-{learn_block}{_lang_rules(cfg)}{_style_rules()}
-Return ONLY valid JSON with this exact shape:
+{learn_block}{_variety_rules(done, len(done))}{skel_block}{_lang_rules(cfg)}{_style_rules()}
+Write a scene-segmented script and return ONLY valid JSON with this exact shape:
 {{
-  "title": "the premise, honestly, <= 70 chars. NEVER contains the planet's name. Model: 'The Underground City That Cooked Itself'",
-  "title_options": ["5 alternatives, strongest first: one plain, one mechanism-led, one number-led"],
-  "thumb_text": "2-4 bold words, Latin caps (e.g. 'IT COOKED ITSELF')",
-  "thumb_headline": "4-7 word dramatic line — high intensity, 100% delivered by the episode; never a fabricated claim",
-  "thumb_question": "3-5 word curiosity annotation, or empty string",
-  "thumb_prompt": "ENGLISH text-to-image prompt for the thumbnail, obeying the art bible: ONE subject filling 50-70% of frame, warm K-dwarf light, basalt/ochre palette, rim-lit against a mid-dark background with real depth (never near-black — it must read at 160px), bottom third kept clear for text. Documentary photograph, not concept art.",
-  "thumb_options": [{{"text": "2-4 caps words", "concept": "alternative visual idea"}}, {{"text": "...", "concept": "..."}}, {{"text": "...", "concept": "..."}}],
-  "region": "the atlas region ID this episode is set in (e.g. REG-01) — must already be REVEALED",
-  "series": "stress_test",
-  "settlement": {{"name": "obeys the naming rules", "premise": "ONE sentence: what this place is and why it exists here", "population": 0}},
-  "systems": [{{"name": "COOLING", "how": "one sentence: the actual mechanism", "runs_at": "the number it normally holds (e.g. '31 C at level 9')", "depends_on": "the ONE resource or structure this system ultimately rests on (e.g. 'the aquifer'). CRITICAL: at least TWO systems must name the SAME depends_on — that shared node IS the hidden dependency, and the schematic draws it as one node with two lines running into it. Name it plainly, as an engineer would on a diagram, with no hint that it matters."}}],
-  "hidden_dependency": "ONE sentence: the coupling two systems shared that nobody drew on the same diagram. This is the episode.",
-  "stress_event": {{"name": "short name for the event", "trigger": "what starts it — small, plausible, unglamorous", "cascade": ["4-6 steps, each a measurable consequence of the last"]}},
-  "verdict": "{steer}",
-  "verdict_reason": "one sentence, stated plainly, no gloating",
-  "real_world_basis": ["3-6 REAL Earth analogues that ground the mechanisms — name the actual phenomenon, material or engineering failure mode a viewer could go and look up. If you cannot fill this, you have invented a fake mechanism and must rewrite."],
-  "truth_label_spoken": true,
-  "canon_refs": ["IDs from canon this episode uses, e.g. REG-01, ORG-01"],
-  "canon_additions": {{"settlements": [{{"name": "...", "region": "REG-0X", "premise": "...", "systems": {{}}, "hidden_dependency": "...", "verdict": "{steer}", "verdict_reason": "..."}}], "organisms": [{{"name": "...", "region": "REG-0X", "biology": "...", "real_world_basis": "...", "visual_signature": "...", "no_fixed_anatomy": true}}], "regions": []}},
-  "premise": "ONE sentence: the machine, and the thing it did not know about itself",
-  "changing_variable": {{"label": "the ONE metric the viewer watches move (CORE TEMP, RESERVE, PRESSURE)", "unit": "C"}},
-  "hero_prompt": "ENGLISH image prompt for the recurring HERO subject the episode returns to as conditions worsen — a place, a machine or a surface, NOT a named character: subject + setting + light + camera angle, per the art bible",
-  "forbidden_visuals": ["3-6 short ENGLISH phrases naming imagery that would BREAK this world: e.g. 'blue-white sunlight', 'Earth vegetation', 'glossy sci-fi chrome', 'glowing holograms', 'creature with a face'"],
-  "next_tease_topic": "the EXACT case teased in the final scene, as a working title — the pipeline WILL make it the next episode, so it must be producible and canon-legal",
-  "description": "2-3 sentences. MUST open with the truth label. Ends with 3 hashtags.",
-  "tags": ["8-12 tags"],
+  "title": "click-worthy but honest YouTube title, <= 70 chars",
+  "title_options": ["5 alternative Hindi titles, strongest first: one conservative, one high-curiosity, one number-driven among them"],
+  "thumb_text": "3-5 bold ENGLISH/Hinglish keywords for the thumbnail (Latin script)",
+  "thumb_headline": "4-7 word DRAMATIC Hindi headline (Devanagari) — the emotional hook of the thumbnail, high intensity but 100% provable by the video (e.g. 'मारियाना ट्रेंच का खूनी सच!'); never a fabricated claim",
+  "thumb_question": "3-5 word Hindi curiosity question for a small thumbnail annotation (e.g. 'शरीर का क्या होगा?'); empty string if none fits",
+  "thumb_prompt": "ENGLISH text-to-image prompt for the thumbnail. NON-NEGOTIABLE: ONE dramatic subject FILLING 50-70% of the frame, strong rim light separating it clearly from the background, at least one vivid color accent; mid-dark background WITH visible depth — NEVER a mostly-black or murky image (it must read instantly at 160px feed size); keep the bottom third relatively empty for the title text",
+  "thumb_options": [{{"text": "2-4 Latin punch words", "concept": "one-line alternative visual idea"}}, {{"text": "...", "concept": "..."}}, {{"text": "...", "concept": "..."}}],
+  "premise": "ONE Hindi sentence: the central claim/question this investigation will test",
+  "changing_variable": {{"label": "the investigation meter the viewer watches move — usually YEAR (the documented timeline) or EVIDENCE (count of verified findings)", "unit": ""}},
+  "hero_prompt": "ENGLISH text-to-image prompt for the episode's recurring HERO subject — one person/object/place the video returns to as conditions change: subject + setting + light + camera angle",
+  "forbidden_visuals": ["3-6 short ENGLISH phrases describing footage that would BREAK the premise and must never appear (e.g. for an unprotected-human deep-sea premise: 'scuba diver', 'diving suit', 'oxygen tank', 'snorkeler')"],
+  "retention_plan": {{
+    "core_question": "the ONE Hindi question the whole video exists to answer — the title's promise, sharpened",
+    "viewer_assumption": "what the target viewer already believes about this topic (Hindi)",
+    "first_reversal": "one Hindi line: the moment that assumption breaks",
+    "main_reveal": "the single strongest answer/fact, held for the climax (Hindi) — the exact content of the main_reveal scene",
+    "main_reveal_scene": 0,
+    "open_loops": [{{"question": "a Hindi question the viewer is left holding", "opens_scene": 1, "partial_scene": 4, "closes_scene": 7}}]
+  }},
+  "description": "2-3 sentences in HINDI (Devanagari) — line 1 restates the hook as a question a viewer would ask, line 2-3 tease the payoff WITHOUT spoiling it. No hashtags here (the pipeline appends them).",
+  "tags": ["8-12 tags a HINDI-SPEAKING viewer in India would actually type. At least 6 in Devanagari (e.g. 'मंगल ग्रह', 'ब्रह्मांड के रहस्य'), 2-3 Hinglish in Latin script (e.g. 'mangal grah', 'space hindi'), rest English topic terms. No generic single words like 'science'."],
   "scenes": [
     {{
       "n": 1,
       "title": "3-6 word scene title",
       "narration": "60-150 words of spoken narration",
-      "visual_mode": "ai_image | motion | schematic | atlas | kinetic | stat | card | verdict",
+      "visual_mode": "broll | ai_image | kinetic | stat | card | map | glass | scale | causal | evidence",
       "visual_role": "experience | explanation | measurement",
+      "narrative_role": "hook | question | context | discovery | explanation | comparison | reversal | evidence | escalation | partial_answer | mini_reveal | main_reveal | implication | conclusion | next_curiosity",
+      "reward": {{"type": "fact | comparison | visual_reveal | partial_answer | contradiction | consequence | scale | evidence", "strength": 0.7}},
+      "question_out": "the Hindi question this scene leaves OPEN that pulls the viewer into the next scene ('' only for the final scene)",
       "delivery": "hook | calm | reveal | urgent",
-      "must_show": ["1-2 short ENGLISH phrases naming what MUST be visible for this narration to be true"],
-      "milestone": {{"value": 0, "label": "optional metric label", "unit": "C"}},
-      "ai_prompt": "the art-bible-obedient image prompt (required when visual_mode is ai_image or motion)",
-      "search_terms": ["ONLY for abstract texture beats (dust, water, rock) — leave empty otherwise; there is no stock footage of a planet that does not exist"],
-      "kinetic_text": "3-6 word punch phrase (kinetic only)",
-      "stat": {{"value": 0, "suffix": "", "label": "", "max": null, "baseline": null, "bars": [{{"label": "short", "value": 0}}]}},
-      "card": {{"kicker": "short category", "headline": "5-10 words", "body": "one sentence, under 18 words"}},
-      "schematic": {{"kicker": "SYSTEM", "headline": "what the diagram shows", "body": "one support line", "value": null, "suffix": "", "label": "", "delta": null, "delta_direction": "up | down | flat", "location": "", "coordinates": "", "chapter": ""}},
-      "atlas": {{"region": "REG-01", "label": "locator caption"}}
+      "must_show": ["1-2 short ENGLISH phrases naming what MUST be visible on screen for this scene's narration to be true"],
+      "milestone": {{"value": 0, "label": "optional ENGLISH override of the metric label", "unit": "km"}},
+      "search_terms": ["stock video search term", "alternative term", "broader fallback term"],
+      "ai_prompt": "detailed text-to-image prompt (only when visual_mode is ai_image, else empty string)",
+      "kinetic_text": "3-6 word punch phrase (only when visual_mode is kinetic, else empty string)",
+      "stat": {{"value": 0, "suffix": "", "label": "", "max": null, "baseline": null, "bars": [{{"label": "short label", "value": 0}}]}},
+      "card": {{"kicker": "short category", "headline": "5-10 word headline", "body": "one concise explanatory sentence"}},
+      "glass": {{"kicker": "short category", "headline": "main Hindi line", "body": "one short support line", "value": null, "suffix": "", "label": "", "delta": null, "delta_direction": "up | down | flat", "location": "", "coordinates": "", "chapter": ""}},
+      "map": {{"lat": 0.0, "lon": 0.0, "label": ""}},
+      "compare": {{"value": 0, "unit": "मीटर", "label": "what the number is (Hindi)", "anchor_label": "बुर्ज ख़लीफ़ा", "anchor_value": 828, "anchor_unit": "मीटर"}},
+      "causal": {{"headline": "optional short Hindi headline", "steps": ["3-6 SHORT Hindi steps, each <= 6 words, cause -> effect order"]}},
+      "evidence": {{"kicker": "स्रोत", "headline": "short Hindi claim being proven", "source": "the REAL named source (mission/agency/journal + name)", "date": "year or date", "confidence": "पुष्टि | अनुमान | विवादित"}}
     }}
   ]
 }}
 
-VISUAL MODES — this planet has no stock footage, so AI stills carry the film:
-- MOST scenes are "ai_image". Every ai_prompt obeys the art bible: dim amber
-  K-dwarf light, basalt and ochre, documentary lenses, a human or a doorway for
-  scale, film grain, matte contrast. Banned: neon rim light, chrome, lens flare,
-  god-rays, creatures looking at camera, text inside the image.
-- EXACTLY 1-{motion_max} scenes are "motion": the single moment that must MOVE (the
-  cascade's turning point, or the stress event arriving). These are expensive —
-  spend them on the hook or the collapse, never on an establishing shot.
-- EXACTLY 1 scene is "atlas" — the locator, early. The map of the world is the
-  returning-viewer glue; every episode plants its case on it.
-- EXACTLY 1-2 scenes are "schematic": the dossier diagram of the machine. This
-  is where the hidden dependency hides IN PLAIN SIGHT — draw the two systems
-  that share the thing, and do not comment on it.
-- EXACTLY 1 scene is "verdict": the final card. SURVIVED / ADAPTED / FAILED.
-  Near-silence. No music swell. State it and stop.
-- 0-2 "stat" scenes when narration centres on ONE number that is MOVING.
-- 0-1 "kinetic" scene for the single hardest line in the script.
-- 0-1 "card" for a definition or a timeline beat.
-- "broll" is allowed ONLY for abstract texture with no world-specific content
-  (dust in light, water surface, rock). If a stock clip could show Earth, it is
-  banned.
+Delivery direction (how the narrator speaks each scene):
+- scene 1 = "hook" (energetic). The scene landing the biggest twist/number =
+  "reveal" (slower, with a beat of silence before it). "urgent" at most once.
+  Everything else "calm". Never two "reveal" scenes in a row.
+
+Map scenes: when ONE specific place is the star of a scene, set visual_mode
+"map" with accurate map.lat / map.lon and a short Hindi map.label (0-2 map
+scenes per video; still provide search_terms as fallback).
+
+Visual mode rules (variety is the goal — videos must not feel stock-only):
+- Most scenes are "broll" (stock footage exists for them).
+- EXACTLY 1-{ai_max} scenes are "ai_image": visuals stock can't provide
+  (ancient/extinct scenes, cutaway views, imagined perspectives, precise
+  historical moments). Write a rich, specific ai_prompt: subject + setting +
+  light + camera angle. These become the video's signature shots — use them
+  on the hook, the re-hook and the payoff where possible.
+- EXACTLY 1-2 scenes are "kinetic": a bold typography moment for the strongest
+  line (often the hook or re-hook). kinetic_text = the phrase, punchy.
+- 0-2 scenes are "stat": when narration centers on ONE striking number.
+  Fill stat.value (number only), stat.suffix ("%", "km", "×"...), stat.label
+  (what the number is). Narration must actually say that number. For a share of
+  a whole, add stat.max to opt into a ring gauge. For before/after, add numeric
+  stat.baseline. For a 2-5 item comparison, add stat.bars with short labels and
+  numeric values. Use only one of max, baseline or bars; omit unused fields.
+- 0-2 scenes are "card": use a concise editorial definition, warning,
+  comparison, quotation or timeline beat when text explains the idea better
+  than generic stock. Fill card.kicker/headline/body; keep body under 18 words.
+- EXACTLY 1 scene is "glass": a premium smoked liquid-glass information beat.
+  Use value/suffix/label for a metric, location/coordinates for a place,
+  chapter/headline for an act break, or headline/body for a fact. Reserve the
+  biggest reveal for delivery="reveal"; the renderer selects the matching layout.
+- 0-1 scenes are "scale": when ONE big number begs a physical comparison the
+  viewer can feel. Fill compare: the number (value+unit) and ONE familiar
+  Indian anchor (anchor_label + anchor_value in the same unit — बुर्ज ख़लीफ़ा
+  828 मीटर, कुतुब मीनार 73 मीटर, एक रेल डिब्बा 25 मीटर, हिमालय 8,849 मीटर).
+  The narration must SAY the value. Use on a "comparison" narrative_role scene.
+- 0-1 scenes are "causal": when the mechanism is a chain (A causes B causes C),
+  show it as a stepwise diagram instead of generic footage. causal.steps =
+  3-6 SHORT Hindi steps in strict cause->effect order. Pair with
+  narrative_role "explanation" — this replaces the weakest broll explanation.
+- 0-1 scenes are "evidence": on the video's strongest PROOF beat. Name the
+  REAL source (mission, agency, journal, scientist + year) in evidence.source
+  and tag confidence HONESTLY: "पुष्टि" only for well-established findings,
+  "अनुमान" for estimates/models, "विवादित" for contested claims. The frame
+  brackets real footage — search_terms must request authentic/archival
+  material (NASA, expedition, observatory), NEVER generated art. Pair with
+  narrative_role "evidence". An honest "अनुमान" tag builds more trust than a
+  fake certainty.
+- Every scene still needs search_terms as fallback. Concrete visual nouns only,
+  and every term must belong to the topic's own visual world — never
+  metaphorical/studio/commercial imagery (no drinks, food, offices, product
+  shots), and wildlife must look wild ("aerial", "natural habitat" — never
+  zoo/enclosure footage).
+- If narration names a real landmark, machine, animal or anatomical structure,
+  search_terms[0] MUST name the exact subject. When exact footage is unlikely,
+  rewrite the narration generically instead of showing a misleading substitute.
+- CONTINUITY CONTRACT: no search term may describe (or be likely to return)
+  anything in forbidden_visuals. When a scene needs the protagonist/hero,
+  do not request stock humans — the recurring hero image carries those beats;
+  write search_terms for the ENVIRONMENT instead.
+- MUST-SHOW CONTRACT: each scene's must_show names the 1-2 concrete things
+  the footage must actually depict for the narration to be true (e.g.
+  "deep ocean darkness", "volcanic vent"). Keep them findable in stock —
+  the pipeline rejects footage that misses them, so never demand the
+  impossible; leave the list empty for abstract/graphic scenes.
+- VISUAL ROLE ROTATION (anti-montage rule): tag every scene's visual_role —
+  "experience" (what the viewer would see/feel there), "explanation" (why it
+  happens — cards/diagrams/cutaways), "measurement" (how deep/hot/fast —
+  stat/glass/HUD moments). Never let three consecutive scenes share one
+  role; this rotation is what separates a documentary from a stock montage.
+- SHOT RHYTHM (the idea sets the cut, not a timer): the hook cuts fast —
+  write it in short punchy sentences; normal scenes breathe; give the single
+  most beautiful or emotional scene FEWER words so its visual can hold for
+  8-10 seconds; the reveal keeps its beat of silence.
 
 Script rules:
-- THE MACHINE FIRST. By 90 seconds the viewer must be able to draw the
-  settlement's life-support system on a napkin. You cannot break something the
-  audience does not understand.
-- THE HIDDEN DEPENDENCY is stated OUT LOUD exactly once, in the schematic scene,
-  as a neutral fact — and its significance is not explained until the cascade.
-  The pleasure of this format is the viewer seeing it half a second before the
-  narrator says it.
-- ONE STRESS EVENT. Not a montage of disasters. One trigger, followed all the
-  way down through 4-6 measurable steps. Each step is caused by the previous
-  step — if you can reorder them, they are not a cascade.
-- SIMULATION ENGINE: changing_variable is the ONE number the viewer watches.
-  EVERY scene carries a milestone.value on it, escalating monotonically, and the
-  narration must SAY that number. A viewer must be able to answer "how bad is it
-  now?" at any second.
-- THE ENGINEERS WERE NOT STUPID. Every decision that led here was defensible
-  with the information they had. Write at least one scene that makes the
-  audience agree with the choice that kills the city. This is the difference
-  between a stress test and a disaster video.
-- SCALE ANCHORING: every large number gets exactly ONE physical comparison a
-  viewer can feel — a body, a room, a season, a walk. Never three.
-- {v['scenes_min']} to {v['scenes_max']} scenes. Scene 1 is a 20-25 second COLD OPEN that
-  states the premise and speaks the truth label. First concrete mechanism by
-  0:45. Re-hooks near 25%, 50%, 75%. Final scene is the verdict plus a 15-second
-  glimpse of the next case.
-- THE TEASE IS A CONTRACT: the final glimpse must describe next_tease_topic
-  exactly, must be canon-legal, and the pipeline WILL produce it next week.
-- REALITY CHECK before you return: for every mechanism you wrote, can you name
-  the real Earth phenomenon it is built on? If not, delete the mechanism. The
-  place is fictional; the principles are real. That sentence is the channel.
-- Narration is written for the EAR. Every scene advances exactly one idea."""
+- PROMISE LADDER (the retention engine — a deterministic audit enforces this):
+  the video is NOT one giant withheld secret. It rewards early, then deepens:
+  hook conflict -> partial answer -> deeper question -> mechanism/evidence ->
+  reversal -> main reveal -> implication.
+  * Scene 1 frames retention_plan.core_question but NEVER answers it. If the
+    topic's headline fact is unavoidable in the hook (the title already says
+    it), state it and immediately make the REAL question deeper: "क्यों",
+    "कैसे", "सबसे पहले क्या फेल होगा", "इससे क्या बदलता है".
+  * A partial answer/reward lands within the first 2 scenes.
+  * The main_reveal scene sits at 55-85% of the total words — never earlier,
+    and its content (retention_plan.main_reveal) must not be stated or
+    paraphrased by ANY earlier scene.
+  * Keep 1-2 major open_loops active at all times; close one before opening
+    a third; every FACTUAL loop closes before the video ends (the one central
+    mystery question is allowed to remain honestly open — see ENDING RULE).
+  * Every scene changes at least one of: knowledge, stakes, certainty, scale,
+    direction or emotion. A scene that only restates an earlier idea with new
+    footage does not belong in the video.
+  * No more than two consecutive scenes share a narrative_role.
+  * After the main reveal: one implication scene (what this means for the
+    viewer/world), then the honest ending per the ENDING RULE.
+- ENGINE NEVER GOES FLAT: milestone values must keep moving until at least
+  ~75-80% of the script. If the changing_variable naturally reaches its
+  destination earlier, hand the story to a SECOND engine (an investigation,
+  a failure chain, a countdown) and let the milestones track that instead —
+  never repeat the same milestone value for 3 scenes in a row.
+- SCENARIO LOCK (scientific integrity): if the premise is a hypothetical with
+  multiple interpretations, CHOOSE ONE in the cold open and derive every
+  consequence from that single scenario — never mix consequences from
+  different interpretations of the same "what if".
+- INVESTIGATION ENGINE (most important rule): the video is an investigation
+  that moves through DOCUMENTED TIME. "premise" states the central claim;
+  "changing_variable" is usually YEAR — every scene gets a milestone.value on
+  the documented timeline (the year of the text, the expedition, the
+  excavation, the file), moving broadly forward from the oldest source to
+  the present day. The narration of each scene must actually SAY its year or
+  evidence marker. A viewer should be able to answer "कहानी अभी किस साल में
+  है?" at any second.
+- FIVE-ACT INVESTIGATION SKELETON (the genre's shape): (1) दावा — cold open
+  states the impossible claim plainly, then immediately shows the ONE real,
+  checkable anomaly that keeps it alive; (2) स्रोत — what the texts/legends
+  ACTUALLY say, quoted or paraphrased accurately; (3) इतिहास — the documented
+  trail: real expeditions, excavations, files, named dates; (4) सिद्धांत —
+  2-3 competing explanations INCLUDING the skeptical/scientific one, each
+  given fair weight; (5) जो बचा है — the honest ending (see ENDING RULE).
+- THREE REGISTERS, ALWAYS LABELED: शास्त्र क्या कहते हैं (scripture),
+  इतिहास में क्या दर्ज है (documented record), विज्ञान/पुरातत्व क्या कहता है
+  (evidence). Never blur them into one claim; the narration itself names the
+  register when switching ("ग्रंथ कहते हैं...", "लेकिन दस्तावेज़ों में...",
+  "पुरातत्वविदों को मिला...").
+- RESPECT IS NON-NEGOTIABLE: sacred figures, deities and texts are treated
+  with reverence; no mockery, no sensational distortion of scripture, no
+  inter-religion comparisons, no communal or political framing, no invented
+  quotes or documents, no "scientists are hiding the truth" claims.
+- ENDING RULE (replaces "close every loop"): every FACTUAL loop closes — what
+  was found, what was proven, what was disproven is stated plainly. The ONE
+  central mystery question may remain honestly open, ending on a precise,
+  haunting final line ("जो मिला वो आपके सामने है। जो नहीं मिला — वही असली
+  रहस्य है।"-class). Never fake-resolve; never claim more than the evidence.
+- NARRATIVE SPINE: the whole video follows ONE concrete thread — a journey, a
+  single tightening question, or one entity moving through the story (one
+  drop of rain travelling underground; one signal crossing space). The
+  "hero_prompt" subject is that entity: the video returns to it as conditions
+  change. Introduce the spine inside the cold open and pay it off in the
+  final scene — the ending should resolve the exact image the video opened on.
+- SCALE ANCHORING: every large number gets exactly ONE familiar comparison the
+  audience can feel — for this Hindi channel prefer Indian anchors (Delhi to
+  Jaipur distance, Burj Khalifa/Himalaya heights, a Rajdhani train's speed,
+  monsoon rainfall, Mumbai's population). One vivid anchor beats three vague
+  ones; never force it.
+- VISUAL PACING MIX (how a human editor cuts): ~60% of scenes are slow,
+  majestic b-roll moments that breathe; ~20% are rapid intercut stretches
+  (short beats, quick cuts, urgency); ~20% are graphic moments (kinetic /
+  stat / card / glass / map). Graphics are 3-5 second IMPACT hits, not
+  wallpaper — after a graphic lands, the narration must move on and hand the
+  screen back to footage. Never let two graphic scenes sit adjacent.
+- {v['scenes_min']} to {v['scenes_max']} scenes. Scene 1 is an 18-25 second COLD OPEN
+  that states the premise immediately and opens a curiosity gap. Deliver the
+  first concrete answer by 45 seconds. Add one-sentence re-hooks near 25%, 50%
+  and 75% of the runtime, each paired with a new visual mode. Final scene is a 20-second
+  payoff that lands the answer with a strong, conclusive final line — NO
+  next-video tease, NO "like and subscribe" begging.
+- Narration is written for the EAR: short sentences, makes sense with eyes closed.
+- Facts must be well-established; when uncertain, phrase carefully rather than
+  inventing precise numbers.
+- Every scene advances exactly one idea."""
 
     def _word_count(s: dict) -> int:
         return sum(len(str(sc.get("narration", "")).split()) for sc in s["scenes"])
@@ -832,10 +1202,15 @@ Script rules:
             script["topic"] = topic
             script = _critique(script, cfg, api_key, "long", 4)
             # enforce the word budget BEFORE TTS — a short script is a short
-            # video, and expanding here is free (no wasted voice credits)
-            wc = _word_count(script)
-            if wc < int(words * 0.88):
-                print(f"[script] undershoot ({wc}/{words} words) — expansion pass")
+            # video, and expanding here is free (no wasted voice credits).
+            # Two attempts; a persistent miss is recorded as a FAILURE (not a
+            # warning) and run.py drafts the release (retention.gate).
+            for _pass in range(2):
+                wc = _word_count(script)
+                if wc >= int(words * 0.88):
+                    break
+                print(f"[script] undershoot ({wc}/{words} words) — "
+                      f"expansion pass {_pass + 1}")
                 exp = f"""The draft below runs {wc} spoken words but must run
 {int(words * 0.95)}-{int(words * 1.05)} words. Expand the THINNEST scenes with
 concrete, specific material — mechanisms, named places, numbers, consequences
@@ -849,12 +1224,15 @@ DRAFT:
                 try:
                     expanded = _normalize(_parse_json(_llm(exp, cfg, api_key)), 4)
                     for before, after in zip(script["scenes"], expanded["scenes"]):
-                        for field in ("stat", "card", "glass", "map", "milestone"):
+                        for field in ("stat", "card", "glass", "map", "milestone",
+                                      "compare", "causal", "evidence",
+                                      "narrative_role"):
                             after[field] = before.get(field, {})
                     for field in ("premise", "changing_variable", "hero_prompt",
                                   "forbidden_visuals", "title_options",
                                   "thumb_options", "thumb_headline",
-                                  "thumb_question", "next_tease_topic"):
+                                  "thumb_question", "next_tease_topic",
+                                  "retention_plan"):
                         if not expanded.get(field):
                             expanded[field] = script.get(field)
                     expanded["topic"] = topic
@@ -863,6 +1241,61 @@ DRAFT:
                         print(f"[script] expanded to {_word_count(script)} words")
                 except Exception as exc:
                     print(f"[script] expansion skipped ({exc})")
+                    break
+            # overshoot is a miss too: a 6-minute promise delivered as 8
+            # minutes dilutes pacing and trips the runtime gate at render.
+            # Trim verbose scenes BEFORE TTS (free), mirroring the expansion.
+            for _pass in range(2):
+                wc = _word_count(script)
+                if wc <= int(words * 1.10):
+                    break
+                print(f"[script] overshoot ({wc}/{words} words) — "
+                      f"trim pass {_pass + 1}")
+                trim = f"""The draft below runs {wc} spoken words but must stay
+under {int(words * 1.08)} words (target {words}). TRIM the most verbose
+scenes: cut adjectives, repeated ideas and any sentence that adds no new
+information — NEVER cut milestone values, reveals, numbers that graphics
+display, or the promise-ladder structure. Keep the same JSON schema, scene
+count, visual modes and every non-narration field unchanged.
+{_lang_rules(cfg)}
+Return ONLY the full revised JSON.
+
+DRAFT:
+{json.dumps(script, ensure_ascii=False)}"""
+                try:
+                    trimmed = _normalize(_parse_json(_llm(trim, cfg, api_key)), 4)
+                    for before, after in zip(script["scenes"], trimmed["scenes"]):
+                        for field in ("stat", "card", "glass", "map", "milestone",
+                                      "compare", "causal", "evidence",
+                                      "narrative_role"):
+                            after[field] = before.get(field, {})
+                    for field in ("premise", "changing_variable", "hero_prompt",
+                                  "forbidden_visuals", "title_options",
+                                  "thumb_options", "thumb_headline",
+                                  "thumb_question", "next_tease_topic",
+                                  "retention_plan"):
+                        if not trimmed.get(field):
+                            trimmed[field] = script.get(field)
+                    trimmed["topic"] = topic
+                    if _word_count(trimmed) < wc:
+                        script = trimmed
+                        print(f"[script] trimmed to {_word_count(script)} words")
+                except Exception as exc:
+                    print(f"[script] trim skipped ({exc})")
+                    break
+            wc = _word_count(script)
+            script["word_budget"] = {
+                "target": words, "min": int(words * 0.92),
+                "max": int(words * 1.08), "actual": wc,
+                "wpm_used": wpm,
+                "ok": int(words * 0.88) <= wc <= int(words * 1.15),
+            }
+            if not script["word_budget"]["ok"]:
+                print(f"[script] WORD BUDGET MISS: {wc}/{words} — the release "
+                      "will be flagged for review")
+            script["skeleton"] = skel_name
+            _enforce_title_variety(script, done)
+            script = _retention_pass(script, cfg, api_key, topic)
             script = _plan_visual_beats(script, cfg, api_key)
             modes = [s["visual_mode"] for s in script["scenes"]]
             print(f"[script] '{script['title']}' — {len(modes)} scenes, modes: {modes}")
@@ -872,42 +1305,23 @@ DRAFT:
     raise RuntimeError("Could not obtain a valid script after 3 attempts")
 
 
-def load_script_file(path: str, cfg: dict, api_key: str = "") -> dict:
-    """A hand-written episode (SCRIPT_FILE env). Same normalize boundary and
-    the same canon gate downstream — but NO LLM critique and NO expansion
-    pass. The entire point of a hand-written script is its voice; nothing in
-    this pipeline is allowed to rewrite a word of it. Visual-beat planning
-    still runs (it binds assets to narration; it does not touch narration).
-    """
-    with open(path, encoding="utf-8") as f:
-        raw = json.load(f)
-    script = _normalize(raw, 4)
-    script["topic"] = str(raw.get("topic") or script.get("title") or
-                          os.path.basename(path))
-    script["handwritten"] = True
-    wc = sum(len(str(sc.get("narration", "")).split()) for sc in script["scenes"])
-    target = int(cfg["video"]["target_minutes"] * _wpm(cfg))
-    if not (target * 0.85 <= wc <= target * 1.15):
-        print(f"[script] hand-written word count {wc} is outside "
-              f"{int(target * 0.85)}-{int(target * 1.15)} — proceeding; "
-              "the human owns the cut")
-    if api_key:
-        script = _plan_visual_beats(script, cfg, api_key)
-    modes = [s["visual_mode"] for s in script["scenes"]]
-    print(f"[script] HAND-WRITTEN '{script['title']}' — {len(modes)} scenes, "
-          f"{wc} words, modes: {modes}")
-    return script
-
-
 def generate_short_script(cfg: dict, topic: str, api_key: str,
-                          learnings: str = "") -> dict:
-    """Script for a vertical Short/Reel: one idea, ~25s, loop-friendly."""
+                          learnings: str = "", done: list | None = None) -> dict:
+    """Script for a vertical Short/Reel: one idea, loop-friendly. Length is
+    ADAPTIVE inside [min_seconds, max_seconds]: the story's promise decides,
+    not a fixed clock — a checkpoint journey needs more runway than one fact
+    (the #1 viewer complaint on fixed-length shorts was "feels cut off")."""
+    done = done if done is not None else []
     scfg = cfg.get("short", {})
-    seconds = int(scfg.get("target_seconds", 25))
+    min_seconds = int(scfg.get("min_seconds", scfg.get("target_seconds", 40)))
+    max_seconds = int(scfg.get("max_seconds",
+                               max(55, int(scfg.get("target_seconds", 30)))))
     # shorts word budget calibrates to the REAL spoken pace (Sarvam Hindi with
     # pauses runs ~95-105 wpm, well below the long-form planning rate)
     wpm = int(scfg.get("wpm", min(_wpm(cfg), 105)))
-    words = int(seconds / 60 * wpm)
+    min_words = int(min_seconds / 60 * wpm)
+    words = int(max_seconds / 60 * wpm)
+    seconds = max_seconds
     short_ai_max = min(_ai_max(cfg), 2)
     learn_block = (f"\nCHANNEL LEARNINGS — apply to hook and pacing:\n{learnings}\n"
                    if learnings else "")
@@ -915,19 +1329,34 @@ def generate_short_script(cfg: dict, topic: str, api_key: str,
 faceless channel (vertical video: voiceover + b-roll + big captions).
 
 TOPIC: {topic}
-TARGET: ~{words} spoken words TOTAL (~{seconds} seconds — shorts are ruthless)
-HARD RANGE: {int(words * 0.9)}-{int(words * 1.15)} words. Under {int(words * 0.9)}
-feels incomplete and cheap; over {int(words * 1.15)} kills completion rate.
-Count your words before returning.
+LENGTH — the story decides, inside a hard band:
+HARD RANGE: {min_words}-{int(words * 1.05)} spoken words TOTAL
+({min_seconds}-{max_seconds} seconds). Use the FEWEST words that COMPLETELY
+pay off the title's promise — one crisp fact fits the bottom of the band;
+a journey/timeline/checkpoint topic ("हर 1000 मीटर पर...", "minute by
+minute...") needs the top of the band, because every promised checkpoint
+must actually appear. Never stretch a small idea and never amputate a big
+one. Count your words before returning.
+
+PROMISE AUDIT (do this BEFORE writing scenes): list to yourself the 3-5
+questions your title makes the viewer expect. Every one of them must be
+answered on screen. If the title promises N checkpoints/minutes/stages, all
+N appear — a video that answers 2 of 5 expected questions feels cut off and
+gets swiped into oblivion. The second-to-last scene must resolve the CENTRAL
+question with a clear verdict (what it means / who survives / what remains),
+not just another fact.
 TONE: {cfg['channel']['tone']}, but faster and punchier than long-form
-{learn_block}{_lang_rules(cfg)}{_style_rules()}
+{learn_block}{_variety_rules(done, len(done))}{_lang_rules(cfg)}{_style_rules()}
 Return ONLY valid JSON:
 {{
   "title": "<= 80 chars, curiosity gap, no clickbait lies",
   "thumb_text": "2-4 bold ENGLISH/Hinglish punch words (Latin script)",
   "delivery-note": "each scene also gets \"delivery\": hook | calm | reveal | urgent (scene 1 = hook; the twist scene = reveal); and may use visual_mode \"map\" with \"map\": {{\"lat\": 0.0, \"lon\": 0.0, \"label\": \"हिन्दी\"}} when one specific place is the star (0-1 map scenes)",
-  "description": "1-2 lines, end with hashtags including #shorts",
-  "tags": ["6-10 tags"],
+  "payoff": "ONE declarative Hindi sentence that ANSWERS the hook's question",
+  "meaning": "ONE Hindi sentence: why that answer matters to the viewer",
+  "loop_bridge": "optional COMPLETE Hindi sentence that points back to the hook on replay ('' if none; never end on a connector)",
+  "description": "1-2 lines in HINDI (Devanagari) that restate the hook as a question. No hashtags here (the pipeline appends them).",
+  "tags": ["6-10 tags a HINDI-SPEAKING viewer in India would type. At least 4 in Devanagari, 1-2 Hinglish in Latin script, rest English topic terms."],
   "scenes": [
     {{
       "n": 1,
@@ -964,16 +1393,20 @@ Shorts rules:
   adjectives and merge scenes. Shorter beats complete.
 - Scene 1 = the hook: <= 12 words, the single most jolting fact/question.
   No greetings, no context, no "did you know".
-- PAYOFF + LOOP (critical): the middle scenes must FULLY deliver what the
-  hook promises — never withhold the core answer; a viewer who watches once
-  must feel they got the complete story. THEN the final scene (8-15 words)
-  opens a NEW, related tension instead of concluding. Banned: "...prove
-  that", "so next time", "that's why" (and their Hindi equivalents:
-  "...साबित करते हैं", "तो अगली बार", "इसीलिए"). Best version: the last line
-  is a complete thought that ALSO ends on a connective ("जानने के लिए...",
-  "और अगर...") which grammatically flows into the hook line on replay, so
-  the loop reads as one continuous sentence — but it must never feel like
-  the video was cut off mid-sentence.
+- ENDING CONTRACT (critical — order is law): the final scene's narration is
+  built payoff -> meaning -> optional replay cue, in that order.
+  * payoff FIRST: a complete declarative sentence answering the hook. A
+    question is NOT a payoff. A new topic is NOT a payoff.
+  * meaning SECOND: one complete sentence of why it matters ("सीमा हमारी है,
+    अंतरिक्ष की नहीं") — this is what the viewer takes away.
+  * loop_bridge LAST and OPTIONAL: it must be a COMPLETE standalone sentence
+    that points back to the opening without requiring the replay to finish its
+    grammar (for example "सवाल फिर वहीं लौटता है।"). The visual loop supplies
+    replay energy; never force it with an unfinished spoken fragment.
+  * BANNED as final words: "लेकिन...", "लेकिन अगर...", "और अगर...", "तो?",
+    "क्या होगा?", "...साबित करते हैं", "तो अगली बार", "इसीलिए" — any
+    construction that leaves the sentence hanging. The video must feel
+    complete even when autoplay does not replay it.
 - Exactly 1-2 "kinetic" scenes, 0-1 "stat", 0-{short_ai_max} "ai_image"
   (put an ai_image on the hook when the topic's strongest visual doesn't
   exist as stock), rest "broll".
@@ -1003,12 +1436,65 @@ Shorts rules:
             script = _normalize(_parse_json(_llm(prompt, cfg, api_key)), 3)
             script["topic"] = topic
             script = _critique(script, cfg, api_key, "short", 3)
+            _enforce_short_payoff(script)
+            _enforce_title_variety(script, done)
             print(f"[script] SHORT '{script['title']}' — "
                   f"{[s['visual_mode'] for s in script['scenes']]}")
             return script
         except (KeyError, AssertionError, json.JSONDecodeError) as e:
             print(f"[script] invalid short JSON (attempt {attempt + 1}): {e}")
     raise RuntimeError("Could not obtain a valid short script after 3 attempts")
+
+
+
+# Final constructions that leave a short feeling cut off mid-sentence.
+_DANGLING_END = re.compile(
+    r"(लेकिन|और अगर|अगर|तो|क्या होगा|जानने के लिए|इसीलिए|तो अगली बार)"
+    r"[\s.…?!]*$")
+
+
+def _enforce_short_payoff(script: dict) -> None:
+    """Deterministic ending contract: payoff and meaning must finish before an
+    optional COMPLETE replay cue. Dangling connectors are removed so the Short
+    still feels finished when a platform does not autoplay the loop."""
+    scenes = script.get("scenes") or []
+    if not scenes:
+        return
+    payoff = str(script.get("payoff") or "").strip()
+    meaning = str(script.get("meaning") or "").strip()
+    bridge = str(script.get("loop_bridge") or "").strip()
+    if bridge and _DANGLING_END.search(bridge):
+        print("[script] ending contract: dropped dangling loop bridge")
+        bridge = ""
+        script["loop_bridge"] = ""
+
+    last = scenes[-1]
+    narration = str(last.get("narration") or "").strip()
+    dangling = bool(_DANGLING_END.search(narration))
+    has_payoff = bool(payoff) and payoff[:24] in narration
+    has_meaning = not meaning or meaning[:24] in narration
+    has_bridge = not bridge or bridge[:18] in narration
+    needs_rebuild = dangling or not has_payoff or not has_meaning or not has_bridge
+
+    if payoff and needs_rebuild:
+        rebuilt = " ".join(x for x in (payoff, meaning, bridge) if x).strip()
+        if rebuilt:
+            print("[script] ending contract: rebuilt complete final scene")
+            last["narration"] = rebuilt
+            return
+
+    if dangling:
+        # Last-resort repair for older model responses without structured
+        # payoff fields: peel off every dangling connector, not just the last
+        # word ("लेकिन अगर" needs two passes).
+        cleaned = narration
+        while cleaned and _DANGLING_END.search(cleaned):
+            cleaned = _DANGLING_END.sub("", cleaned).rstrip(" .…?!")
+        if cleaned:
+            last["narration"] = cleaned + ("" if cleaned.endswith("।") else "।")
+            print("[script] ending contract: trimmed dangling final fragment")
+        else:
+            print("[script] WARNING: could not repair empty final line")
 
 
 def log_topic_done(topic: str, done_file: str = "topics_done.txt") -> None:

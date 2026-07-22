@@ -1,8 +1,2 @@
-The Underground City That Cooked Itself
-NEXT: The Convoy That Outran the Sun
-The Underground City That Cooked Itself
-NEXT: The Convoy That Outran the Sun
-The Underground City That Cooked Itself
-NEXT: The Convoy That Outran the Sun
-The Underground City That Cooked Itself
-NEXT: The Convoy That Outran the Sun
+# Bharat Ke Rahasya — shipped long-form topics (one per line).
+# Add 'NEXT: <topic>' as the last line to force the next episode.

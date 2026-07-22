@@ -5,10 +5,10 @@
     "height": 1080,
     "xfadeFrames": 6,
     "maxShotSeconds": 5,
-    "style": "dossier",
+    "style": "documentary",
     "accent": "#FFB020",
     "progressBar": false,
-    "brandName": "ELSEWHERE",
+    "brandName": "TERRA INCOGNITA",
     "brandTagline": "Test",
     "watermarkPath": null,
     "watermarkOpacity": 0.08,
@@ -18,37 +18,12 @@
     "thumbText": "TEST",
     "thumbAiPath": null,
     "motionSeed": "ci-smoke",
-    "variableLabel": "CORE TEMP",
-    "variableUnit": "C",
-    "verdict": "FAILED",
-    "verdictReason": "Two systems shared one aquifer, on a page nobody drew.",
-    "settlement": {
-      "name": "Tehlmark Deep",
-      "premise": "test"
-    },
-    "systems": [
-      {
-        "name": "COOLING",
-        "runs_at": "31 C at level 9",
-        "depends_on": "the deep aquifer"
-      },
-      {
-        "name": "WATER",
-        "runs_at": "12 C at the tap",
-        "depends_on": "the deep aquifer"
-      },
-      {
-        "name": "POWER",
-        "runs_at": "9.5 MW",
-        "depends_on": "the basalt heat gradient"
-      }
-    ],
     "cta": {
       "start": 0.1,
-      "duration": 0.5,
+      "duration": 0.7,
       "variant": "pill",
       "title": "Subscribe",
-      "subtitle": "Weekly cases",
+      "subtitle": "Weekly discoveries",
       "compact": false
     },
     "sfx": [],
@@ -56,194 +31,27 @@
     "musicVolume": 0,
     "musicLoopSafe": false,
     "captions": [],
-    "scenes": [
-      {
-        "n": 1,
-        "start": 0,
-        "title": "Test scene",
-        "visualMode": "broll",
-        "verdictCard": false,
-        "heroMotion": false,
-        "kineticText": "",
-        "milestone": {
-          "value": 31,
-          "label": "CORE TEMP",
-          "unit": "C"
-        },
-        "stat": {},
-        "card": {},
-        "glass": {},
-        "map": {},
-        "motion": {
-          "statVariant": "glass",
-          "kineticVariant": "word-pop",
-          "cardVariant": "definition",
-          "frameVariant": "corners",
-          "lowerThirdVariant": "rail",
-          "glassVariant": "fact"
-        },
-        "audioPath": null,
-        "audioDuration": 0.6,
-        "assets": []
+    "scenes": [{
+      "n": 1,
+      "start": 0,
+      "title": "Test scene",
+      "visualMode": "broll",
+      "kineticText": "",
+      "stat": {},
+      "card": {},
+      "glass": {},
+      "map": {},
+      "motion": {
+        "statVariant": "glass",
+        "kineticVariant": "word-pop",
+        "cardVariant": "definition",
+        "frameVariant": "corners",
+        "lowerThirdVariant": "rail",
+        "glassVariant": "fact"
       },
-      {
-        "n": 2,
-        "start": 0.6,
-        "title": "Schematic scene",
-        "visualMode": "glass",
-        "verdictCard": false,
-        "heroMotion": false,
-        "kineticText": "",
-        "impactStart": 0,
-        "delivery": "calm",
-        "milestone": {
-          "value": 33,
-          "label": "CORE TEMP",
-          "unit": "C"
-        },
-        "stat": {},
-        "card": {},
-        "glass": {
-          "kicker": "SYSTEM DIAGRAM",
-          "headline": "Five systems, one page",
-          "body": "Cooling rejects into the aquifer. The taps draw from it.",
-          "value": 31,
-          "suffix": " C",
-          "label": "CORE TEMP",
-          "location": "TEHLMARK DEEP",
-          "chapter": "THE MACHINE"
-        },
-        "map": {},
-        "motion": {
-          "statVariant": "glass",
-          "kineticVariant": "word-pop",
-          "cardVariant": "definition",
-          "frameVariant": "corners",
-          "lowerThirdVariant": "rail",
-          "glassVariant": "fact"
-        },
-        "audioPath": null,
-        "audioDuration": 0.6,
-        "assets": []
-      },
-      {
-        "n": 3,
-        "start": 1.2,
-        "title": "Verdict scene",
-        "visualMode": "card",
-        "verdictCard": true,
-        "heroMotion": false,
-        "kineticText": "",
-        "impactStart": 0,
-        "delivery": "calm",
-        "milestone": {
-          "value": 51,
-          "label": "CORE TEMP",
-          "unit": "C"
-        },
-        "stat": {},
-        "card": {
-          "kicker": "CASE 01",
-          "headline": "FAILED",
-          "body": "Test verdict body."
-        },
-        "glass": {},
-        "map": {},
-        "motion": {
-          "statVariant": "glass",
-          "kineticVariant": "word-pop",
-          "cardVariant": "definition",
-          "frameVariant": "corners",
-          "lowerThirdVariant": "rail",
-          "glassVariant": "fact"
-        },
-        "audioPath": null,
-        "audioDuration": 0.6,
-        "assets": []
-      },
-      {
-        "n": 4,
-        "start": 1.8,
-        "title": "Loop scene",
-        "visualMode": "glass",
-        "verdictCard": false,
-        "heroMotion": false,
-        "kineticText": "",
-        "impactStart": 0,
-        "delivery": "calm",
-        "milestone": {
-          "value": 33,
-          "label": "CORE TEMP",
-          "unit": "C"
-        },
-        "stat": {},
-        "card": {},
-        "glass": {
-          "kicker": "THE TRAP",
-          "headline": "Each turn feeds the next",
-          "loop": [
-            "WARMER WATER",
-            "FASTER FILM",
-            "LESS COOLING",
-            "HARDER PUMPING"
-          ]
-        },
-        "map": {},
-        "motion": {
-          "statVariant": "glass",
-          "kineticVariant": "word-pop",
-          "cardVariant": "definition",
-          "frameVariant": "corners",
-          "lowerThirdVariant": "rail",
-          "glassVariant": "fact"
-        },
-        "audioPath": null,
-        "audioDuration": 0.6,
-        "assets": []
-      },
-      {
-        "n": 5,
-        "start": 2.4,
-        "title": "Choices scene",
-        "visualMode": "card",
-        "verdictCard": false,
-        "heroMotion": false,
-        "kineticText": "",
-        "impactStart": 0,
-        "delivery": "calm",
-        "milestone": {
-          "value": 33,
-          "label": "CORE TEMP",
-          "unit": "C"
-        },
-        "stat": {},
-        "card": {
-          "kicker": "TWO MOVES LEFT",
-          "options": [
-            {
-              "title": "Shut the loop down",
-              "consequence": "50 C in two days"
-            },
-            {
-              "title": "Keep pumping",
-              "consequence": "Feed the film"
-            }
-          ]
-        },
-        "glass": {},
-        "map": {},
-        "motion": {
-          "statVariant": "glass",
-          "kineticVariant": "word-pop",
-          "cardVariant": "definition",
-          "frameVariant": "corners",
-          "lowerThirdVariant": "rail",
-          "glassVariant": "fact"
-        },
-        "audioPath": null,
-        "audioDuration": 0.6,
-        "assets": []
-      }
-    ]
+      "audioPath": null,
+      "audioDuration": 1,
+      "assets": []
+    }]
   }
 }

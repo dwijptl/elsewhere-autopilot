@@ -1,79 +1,71 @@
-# ── Elsewhere Autopilot — channel 2 configuration ────────────────────
-# Format spine (non-negotiable, per docs/CHANNEL2_PLAN.md §APPROVED):
-#   Civilization Stress Test, set on ONE persistent living planet.
-#   Every episode: settlement's systems -> the biome shaping them ->
-#   one stress event -> SURVIVED / ADAPTED / FAILED.
+# ── Faceless Autopilot configuration ─────────────────────────────
 # Edit this file on GitHub (pencil icon) — no other setup needed.
 
 channel:
-  # The seed for ALL auto-generated episodes. The planet is the channel.
+  # The seed for ALL auto-generated topics. Change this to pivot the channel.
   niche: >
-    Civilization stress tests on one persistent, original, openly-fictional
-    planet. Each episode documents a single settlement: the machine that
-    keeps it alive (water, heat, air, food, power), the biome that shaped
-    that machine, one stress event that tests a hidden dependency, and a
-    verdict — SURVIVED, ADAPTED or FAILED. The place is fictional; every
-    mechanism, material and organism obeys real physics, chemistry,
-    engineering and evolutionary biology. Hard rules: no real people, no
-    real places, no real history, no religion, no politics; nothing that
-    could be mistaken for a documentary about a real event. Continuity is
-    king — every settlement, organism and verdict is recorded in
-    canon/canon.json and future episodes must not contradict it.
-  tone: >
-    measured, warm, wonder-first English narration — documentary grammar,
-    an engineer's precision with a naturalist's affection; zero hype-speak,
-    zero "AI narrator" cadence
-  audience: "English-speaking adults who love systems, maps, worldbuilding and hard science fiction"
-  language: "en-us"        # BCP-47; drives script language + TTS engine.
-  wpm: 150                 # English documentary narration ~150 wpm
-
-  # Correction 1 (approved): ONE continuity, not a hard one-planet rule.
-  # Season 1 is one planet + one atlas; moons, orbital habitats and other
-  # worlds may join later without breaking the channel.
-  continuity: "one atlas, one timeline, one physics — the planet is season 1"
-
-  # Correction 3 (approved): viewer canon = votes on creator-designed
-  # options only. Submitted names/designs need explicit permission + licence
-  # before entering owned IP.
-  viewer_canon: "polls_on_creator_options_only"
-
-  # The opening truth label, spoken/shown on every episode.
-  truth_label: "Original speculative documentary. The place is fictional; the principles are real."
-
-format:
-  spine: "civilization_stress_test"
-  verdicts: ["SURVIVED", "ADAPTED", "FAILED"]
-  # Correction 2 (approved): the FIRST SIX videos all use the stress-test
-  # format. Ecology appears inside those cases as threat / resource /
-  # solution. "This Ocean Is One Animal" (the ecology episode) only runs
-  # after the promise is established.
-  ecology_episode_unlocks_after: 6
-  # Don't let everything FAIL — the outcome tracker keeps the verdict mix
-  # honest and the series legible (see pipeline/canon.py).
-  outcome_ratio_target: {SURVIVED: 0.3, ADAPTED: 0.4, FAILED: 0.3}
-  outcome_ratio_window: 6   # look back this many episodes when steering
-  # Planet name never appears in a title. Titles sell the premise; the
-  # episode builds the IP.
-  planet_name_in_title: false
+    भारत के रहस्य — Indian & dharmic mystery investigation documentaries in
+    Hindi. Five families: (1) जल में डूबे नगर: Dwarka, submerged temples,
+    lost coastal cities; (2) ग्रंथों में छिपे संकेत: what Sanatan texts
+    actually say vs what history/science found (Saraswati river vs satellite
+    paleochannels, ancient metallurgy, astronomy in the shastras);
+    (3) मंदिरों के रहस्य: Padmanabhaswamy Vault B, Kailasa temple, Konark,
+    unexplained architecture; (4) खोई सभ्यताएं: Sindhu-Saraswati script,
+    Sanauli, Keeladi, lost cities; (5) इतिहास की गुत्थियां और वैश्विक रहस्य
+    भारतीय नज़र से: Roopkund, Shambhala/Gyanganj, Mount Kailash, Nine
+    Unknown Men, declassified files. HARD RULES: every topic MUST have one
+    real, documented, checkable anchor (excavation, expedition, dated text,
+    declassified record) — legend alone is not a topic. Scripture, history
+    and science are ALWAYS presented as three labeled registers, never
+    blurred. Sacred figures and texts are treated with respect — no mockery,
+    no distortion, no inter-religion comparisons, no communal or political
+    angles, no "scientists are hiding the truth" conspiracy claims.
+  tone: "गंभीर, रहस्यमय, investigative — धीमी आवाज़ में परतें खोलता सूत्रधार जो सबूत और श्रद्धा दोनों का सम्मान करता है"
+  audience: "curious Hindi-speaking adults who love history, mythology and unsolved mysteries"
+  language: "hi-IN"        # BCP-47; drives script language + Sarvam TTS.
+                           # Switch back to "en-us" for English.
+  wpm: 130                 # spoken words/minute (Hindi narration ~130; English 150)
 
 video:
-  target_minutes: 5.0      # pilot review: incident early, ~5 min holds a new
-                           # channel's retention better than 6-7 (was 6.5)
-  scenes_min: 9
-  scenes_max: 12
+  target_minutes: 8.5      # mystery long-form breathes; scale up after retention data
+                           # word budget enforced pre-TTS (see channel.wpm)
+  scenes_min: 10
+  scenes_max: 14
   width: 1920
   height: 1080
   fps: 30
   bitrate: "6000k"
-  crossfade: 0.4
-  max_shot_seconds: 5
-  outro_seconds: 2         # brand card is a signature, not a scene (was 4)
+  crossfade: 0.4           # seconds between scenes
+  max_shot_seconds: 5      # normal long-form visual beat ceiling
+  outro_seconds: 4         # branded end card appended to every video
 
+# Retention story engine — deterministic pre-TTS audit of the script's
+# curiosity architecture (promise ladder, reveal placement, open loops,
+# reward gaps, flat progress, claim/display sync). Failures trigger up to
+# max_revisions free repair calls; what happens after that is `gate`:
+#   off   = report only
+#   draft = render normally, mark the release ⚠️ REVIEW   (default)
+#   block = stop BEFORE voice spend (strictest; skips that day's video)
+retention:
+  enabled: true
+  gate: "draft"
+  max_revisions: 2
+  reveal_min_frac: 0.55      # main reveal lands at 55-85% of the words —
+  reveal_max_frac: 0.85      # reward early, then deepen (reference-channel study)
+  max_open_loops: 2          # concurrent major open questions
+  max_reward_gap_words: 60   # ≈25s at real pace without a meaningful reward
+  max_same_role_run: 2       # no 3 consecutive scenes with one narrative role
+  engine_active_until: 0.75  # milestone variable must keep moving until here
+  rehook_tolerance: 0.12     # re-hook must exist near 25/50/75% (±12%)
+  duration_tolerance: 0.10   # rendered narration within ±10% of target
+
+# Six-minute quality system. The free Gemini beat-planning pass binds each
+# spoken idea to a concrete visual instead of rotating loosely related assets.
 longform_quality:
   visual_beats:
     enabled: true
-    hook_max_seconds: 3.8
-    max_seconds: 5.0
+    hook_max_seconds: 3.8  # faster semantic changes during the cold open
+    max_seconds: 5.0       # matches the renderer's normal shot ceiling
     min_per_scene: 2
     max_per_scene: 12
   dynamic_music:
@@ -85,161 +77,167 @@ longform_quality:
     urgent_factor: 0.66
   render_qc:
     enabled: true
-    gate: false
+    gate: false            # report problems; set true only after several clean runs
     min_semantic_coverage: 0.90
     max_asset_uses: 2
-  overlay_seconds: 5.0
+  overlay_seconds: 5.0     # impact window for kinetic/stat/card/glass graphics
 
 tts:
-  engine: "sarvam"         # English narrator via Sarvam bulbul:v3 (decision:
-                           # 2026-07-13). Falls back to Kokoro (free, offline)
-                           # on any API failure so a run never dies.
+  engine: "sarvam"         # "sarvam" = your cloned Hindi voice (bulbul:v3).
+                           # Auto-falls back to Kokoro if the API fails.
+                           # Set to "kokoro" to force the free offline voice.
   sarvam_model: "bulbul:v3"
-  sarvam_speaker: "shubh"  # bulbul:v3 default voice; MUST be lowercase.
-                           # SARVAM_SPEAKER secret overrides this if set.
-                           # Language en-* is mapped to en-IN for Sarvam.
-  elevenlabs_model: "eleven_multilingual_v2"  # dormant alternative
-  elevenlabs_voice: ""     # set the ELEVENLABS_VOICE_ID secret; this is only
-                           # a fallback if the secret is missing
-  stability: 0.42          # documentary steadiness (0-1; lower = more varied)
-  similarity: 0.80
-  style: 0.15              # keep low — hype-speak is a channel-killer
-  speaker_boost: true
-  temperature: 0.6
-  speed: 0.97
-  voice: "am_michael"      # Kokoro fallback voice (English)
-  fail_on_fallback: false  # PICK THE VOICE ONCE, NEVER CHANGE IT.
+  sarvam_speaker: "amit"   # used ONLY if the SARVAM_SPEAKER secret is missing.
+                           # Your cloned voice ID belongs in the secret.
+  temperature: 0.6         # bulbul:v3 expressiveness (0.01-2.0)
+  speed: 0.95              # pace for BOTH engines (Sarvam pace / Kokoro speed)
+  voice: "hm_omega"        # Kokoro fallback voice (Hindi): hf_alpha, hf_beta,
+                           # hm_omega, hm_psi
+  fail_on_fallback: false  # true = fail workflow after preserving a draft for inspection
 
 llm:
-  provider: "auto"         # Claude when ANTHROPIC_API_KEY exists, else Gemini
-  anthropic_model: "claude-sonnet-5"
+  provider: "auto"         # "auto" = Claude for scripts when ANTHROPIC_API_KEY
+                           # secret exists (crisper writing, ~₹4/script),
+                           # otherwise Gemini free tier. Claude failures
+                           # auto-fall back to Gemini.
+  anthropic_model: "claude-sonnet-4-6" # newest sonnet this key actually
+                                       # serves (claude-sonnet-5 404s on the
+                                       # generate endpoint — Test Script #2).
+                                       # If a name 404s, the pipeline asks the
+                                       # API what models YOUR key has and
+                                       # self-heals to the newest sonnet/haiku
   anthropic_fallback_models: ["claude-sonnet-4-5", "claude-haiku-4-5-20251001"]
   model: "gemini-2.5-flash"
+  # tried in order if the model above is retired/404s:
   fallback_models: ["gemini-3-flash", "gemini-flash-latest", "gemini-2.0-flash"]
-  temperature: 0.85        # slightly tighter than channel 1 — canon must hold
+  temperature: 0.9
 
 brand:
-  name: "ELSEWHERE"        # working name; final handle check pending
-  tagline: "Field documentaries from a world that never was."
-  watermark: "brand/watermark.png"   # in-video corner mark (generate_brand.py)
-  watermark_opacity: 0.07
+  name: "BHARAT KE RAHASYA"   # working identity — rename here anytime
+  tagline: "भारत के अनसुलझे रहस्यों की पड़ताल"   # metadata only — not shown on outro
+  watermark_opacity: 0.08  # corner logo watermark on every frame
 
 render:
-  engine: "remotion"
-  # Non-cannibalization rule vs channel 1: different palette, different
-  # grammar. Channel 1 = glass/HUD/navy+amber. Channel 2 = matte archival
-  # engineering dossier: warm paper, amber system-flow lines, one red
-  # stress-line. NO glass, NO HUD.
-  accent: "#D98A3B"        # dossier amber (system flows)
-  stress: "#C43B2E"        # the red stress-line — used ONLY for the failure path
-  progress_bar: false      # channel 1's tell; dossier keeps the frame clean
-  style_pack: "dossier"    # fixed, not rotating — the world needs one look
+  engine: "remotion"       # "remotion" (motion design) or "moviepy" (simple);
+                           # remotion auto-falls back to moviepy on any error
+  accent: "#D8A24A"        # antique gold: captions, lower thirds, progress bar
+  progress_bar: true       # thin accent bar along the top edge
+  # visual styles rotate automatically per video: documentary -> kinetic
+  # -> editorial -> noir -> repeat (see remotion/src/styles.ts)
+
+# Animated hero shots — Kling 2.6 Pro image-to-video on fal animates the
+# hook's first beat and the reveal scene (docs/HERO_SHOTS_SPEC.md).
+# QC-gated (vision_qc, free); a rejected clip ships its source still instead.
+hero_shots:
+  enabled: true            # live on the scheduled Make Video runs (fail-open:
+                           # any hero failure ships the still; $ cap below)
+  model: "fal-ai/kling-video/v2.6/pro/image-to-video"
+  fallback_model: "fal-ai/kling-video/v2.5-turbo/pro/image-to-video"
+  max_per_video: 2         # hook + reveal
+  seconds: 5               # fits max_shot_seconds: 5 — no renderer change
+  max_retries: 1           # ONE regenerate after QC reject, then keep the still
+  audio: false             # sfx.py + mastering own the soundtrack
+  in_shorts: false         # long-form only for now
+  max_usd_per_video: 1.20  # hard cost gate: 2 shots + 1 retry + margin
+
+thumbnail:
+  ai_provider: "gemini"    # thumbnails use the FREE Gemini image tier —
+                           # paid FLUX credits stay reserved for in-video shots
 
 ai_images:
-  enabled: true
-  ai_first: true           # INVERSION vs channel 1: AI stills are the primary
-                           # visual source; stock is demoted to reference only
-                           # (a fictional planet has no stock footage)
-  stock_allowed: false     # true only for abstract texture beats
+  enabled: true            # AI-generated stills for scenes stock can't cover
+  # FLUX via fal.ai — used automatically when the FAL_KEY secret is set.
+  # Signature-shot quality; ~$0.05/image (dev) — a video costs ~$0.20.
   flux_model: "fal-ai/flux/dev"
-  flux_fallback: "fal-ai/flux/schnell"
-  max_per_video_flux: 16   # a 6-7 min episode is carried by 12-16 stills
-  max_per_video: 8         # Gemini free-tier fallback when no FAL_KEY
+  flux_fallback: "fal-ai/flux/schnell"   # ~10x cheaper, slightly softer
+  max_per_video_flux: 4    # richer AI visuals when FLUX is on
+  # Gemini image API — free fallback (~500/day) when no FAL_KEY:
+  max_per_video: 2
+  # FLUX rescue stills for beats whose stock video failed or was QC-rejected —
+  # targeted spend exactly where the narration binding is weakest:
+  rescue_budget: 6
   model: "gemini-2.5-flash-image"
   fallback_models: ["gemini-3-flash-image", "gemini-2.0-flash-preview-image-generation"]
-  # Species/settlement visual continuity — the hardest technical problem in
-  # this concept. Fixed seeds + reference-image conditioning, and the pilot
-  # deliberately avoids fixed anatomy (see docs/PILOT.md).
-  seed_lock: true          # canon entities keep their seed across episodes
-  reference_conditioning: true
-  art_bible: "canon/art_bible.md"
 
-motion:                    # Wan / fal video shots — the expensive ingredient
-  enabled: true
-  max_per_video: 2         # HARD cap; the pilot budget allows 1-2
-  model: "fal-ai/wan-i2v"  # Wan-2.1 image-to-video on fal (queue API)
-  seconds: 5               # 81 frames @ 16fps ≈ 5.06s (>81 frames bills 1.25x)
-  fps: 16
-  resolution: "720p"       # 720p = 1 billing unit/shot; 480p = 0.5
-  poll_timeout_seconds: 900
-
-short:
-  target_seconds: 30
-  wpm: 150
+short:                     # vertical Shorts/Reels (Make Short workflow, Tue/Thu/Sat)
+  # ADAPTIVE length: the script decides inside this band — one crisp fact
+  # lands near min; journey/checkpoint topics use the top. Fixed 28s cut
+  # stories off mid-promise (viewer: "feels incomplete").
+  min_seconds: 40          # verdict after 25-32s tests: under 40s never satisfies
+  max_seconds: 55
+  target_seconds: 45       # midpoint; used for overrun warning + loop tail
+  rescue_budget: 3         # AI stills for scenes where stock found nothing
+  wpm: 100                 # REAL Sarvam Hindi pace incl. pauses (measured ~95-105;
+                           # the 130 planning rate produced 38s shorts from 28s targets)
   scenes_min: 4
   scenes_max: 6
-  crossfade: 0.25
-  max_shot_seconds: 2.4
-  overlay_seconds: 3.5
-  captions_max_chars: 24
-  caption_y: 0.62
-  music_volume: 0.18
-  loop_tail_seconds: 0.06
+  crossfade: 0.25          # faster cuts than long-form
+  max_shot_seconds: 2.4    # fast novelty; renderer now treats this as a hard ceiling
+  overlay_seconds: 3.5     # impact window: graphics land on the spoken word,
+                           # hold ~3.5s, then hand the frame back to footage
+  captions_max_chars: 24   # 3-5 word thought groups (fragments hurt comprehension;
+                           # karaoke word-pops keep the energy)
+  caption_y: 0.62          # centered-low, inside the Shorts UI safe zone
+  music_volume: 0.18       # music matters more in shorts
+  loop_tail_seconds: 0.20  # brief completed-sentence breath before replay
   tts_speed: 1.0
-  ai_images_max: 2
-  ai_images_max_flux: 3
-  progress_bar: false
-  # Non-cannibalization: never share Shorts with channel 1 for 90 days.
-  cross_post_to_channel_1: false
+  ai_images_max: 1
+  ai_images_max_flux: 2    # when FAL_KEY is set
+  progress_bar: false      # Shorts player has its own progress bar
+  visual_beats:            # semantic beats for shorts: imagery changes with
+    enabled: true          # the spoken idea, not a rotation timer
+    hook_max_seconds: 1.6  # faster semantic changes on the hook scene
+    max_seconds: 2.4       # matches the portrait shot ceiling
+    min_per_scene: 1
+    max_per_scene: 6
 
 music:
-  volume: 0.12
+  volume: 0.12             # 0 disables music even if files exist
   fade: 1.5
-  auto_ambient: true
+  auto_ambient: true       # synthesize a loop-safe cinematic bed when music/ is empty
 
 audio_mastering:
   enabled: true
-  target_lufs: -14.0
+  target_lufs: -14.0       # competitive mobile loudness; YouTube can turn down safely
   true_peak_db: -1.5
   lra: 7.0
 
-sfx:
+sfx:                       # synthesized sound design (whoosh/riser/hit)
   enabled: true
-  volume: 0.45             # restraint — this is a documentary, not a trailer
+  volume: 0.5
 
 qc:
-  visual_check: true       # Gemini vision checks every AI still against the
-                           # scene's must_show + the art bible
-  frames: 1                # stills, not clips
-  max_requests_per_video: 20
+  visual_check: true       # Gemini vision sanity-checks every stock clip
+                           # (free tier; fail-open — never blocks a run)
+  frames: 3                # sample 20/50/80% of each stock clip, not just one frame
+  max_upscale: 1.25        # reject obvious blur after portrait crop/upscale
+  max_requests_per_video: 20  # hard cost/rate-limit ceiling for vision QC
+  render_audit_required: false  # true = a skipped/errored post-render audit is
+                                # INDETERMINATE and drafts the release (enable
+                                # after several clean scheduled runs)
 
-atlas:
-  enabled: true            # the growing map of the planet — the returning-
-                           # viewer glue. Rendered from canon/canon.json, not
-                           # from a real-world map service.
-  reveal_new_regions: true
-  locator_every_episode: true
+maps:
+  enabled: true            # animated map-zoom scenes for place-based topics
 
 motion_library:
-  enabled: true
-  cta_enabled: true
-  cta_in_shorts: false
+  enabled: true            # deterministic native Remotion motion-element library
+  cta_enabled: true        # one subtle subscribe + bell moment per video
+  cta_in_shorts: false     # protect retention; watermark carries Shorts branding
   cta_seconds: 3.2
   cta_short_seconds: 1.8
-  cta_title: "Subscribe"
-  cta_subtitle: "A new field report every week"
+  cta_title: "सब्सक्राइब करें"
+  cta_subtitle: "नई खोजें हर हफ्ते"
 
 captions:
   enabled: true
-  max_chars: 56            # sentence-level chunks — documentary subtitles,
-                           # not Short-style word karaoke (was 34)
-  font_size: 54
-  align: true
-  align_window_seconds: 25
+  max_chars: 30            # per caption line (Devanagari glyphs run wider)
+  font_size: 58
+  align: true              # Sarvam STT word timestamps; heuristic fallback on error
+  align_window_seconds: 25 # Sarvam REST requests stay under its short-audio limit
 
-canon_check:               # replaces channel 1's factcheck stage
-  enabled: true
-  gate: high_risk          # high_risk = a canon contradiction or a broken
-                           # real-science mechanism marks the release
-                           # DRAFT-DO-NOT-PUBLISH · true = any flag blocks ·
-                           # false = advisory only
-  max_claims: 12
-  # Two things get checked, and they are different:
-  #   1. CANON: does this script contradict canon/canon.json?
-  #   2. SCIENCE: is every mechanism physically plausible on the stated
-  #      planet (gravity, atmosphere, chemistry, biology, materials)?
-  check_canon: true
-  check_science: true
-  # The channel's credibility promise. A fictional place is fine.
-  # A fake mechanism is not.
-  science_sources_required: true
+factcheck:
+  enabled: true            # Gemini Google Search review before TTS
+  max_claims: 10           # narration + packaging (title/thumb/tease) claims
+  gate: high_risk          # high_risk = unsupported HIGH-RISK claims mark the
+                           # release DRAFT-DO-NOT-PUBLISH · true = any
+                           # unsupported claim blocks · false = advisory only

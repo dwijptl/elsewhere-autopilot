@@ -33,8 +33,6 @@ jobs:
         env:
           SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
           SARVAM_SPEAKER: ${{ secrets.SARVAM_SPEAKER }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
           TEST_TEXT: ${{ github.event.inputs.text }}
           TTS_NO_FALLBACK: "1"
         run: python pipeline/test_voice.py

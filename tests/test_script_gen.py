@@ -15,11 +15,9 @@ def test_parse_json_handles_llm_wrappers(text):
 
 
 def test_normalize_sets_safe_defaults():
-    # Channel 2 is AI-first: a planet that does not exist has no stock footage,
-    # so an unknown mode must fall back to a generated still, never to b-roll.
     script = {"title": "x", "scenes": [{"narration": "one", "visual_mode": "bad"}]}
     result = script_gen._normalize(script, 1)
-    assert result["scenes"][0]["visual_mode"] == "ai_image"
+    assert result["scenes"][0]["visual_mode"] == "broll"
     assert result["scenes"][0]["delivery"] == "hook"
     assert result["scenes"][0]["card"] == {}
     assert result["scenes"][0]["glass"]["headline"] == ""
@@ -78,3 +76,32 @@ def test_critique_preserves_structured_visual_payload(monkeypatch):
                                   "key", "short", 1)
     assert result["scenes"][0]["glass"]["value"] == 42
     assert result["scenes"][0]["narration"] == "better words"
+
+
+def test_short_ending_drops_dangling_loop_bridge():
+    script = {
+        "payoff": "जीवन गहराई में बच सकता है।",
+        "meaning": "जीवन हार नहीं मानता।",
+        "loop_bridge": "लेकिन अगर…",
+        "scenes": [{"narration": (
+            "जीवन गहराई में बच सकता है। जीवन हार नहीं मानता। लेकिन अगर…"
+        )}],
+    }
+    script_gen._enforce_short_payoff(script)
+    assert script["loop_bridge"] == ""
+    assert script["scenes"][-1]["narration"] == (
+        "जीवन गहराई में बच सकता है। जीवन हार नहीं मानता।"
+    )
+
+
+def test_short_ending_keeps_complete_replay_cue():
+    script = {
+        "payoff": "जीवन गहराई में बच सकता है।",
+        "meaning": "जीवन हार नहीं मानता।",
+        "loop_bridge": "सवाल फिर वहीं लौटता है।",
+        "scenes": [{"narration": "bad"}],
+    }
+    script_gen._enforce_short_payoff(script)
+    assert script["scenes"][-1]["narration"].endswith(
+        "सवाल फिर वहीं लौटता है।"
+    )

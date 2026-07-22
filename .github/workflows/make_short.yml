@@ -2,11 +2,16 @@ name: Make Short
 
 on:
   schedule:
-    # Thu / Sat / Sun at 06:00 UTC — the three Shorts fill the gap days after
-    # Wednesday's episode.
-    # 3 Shorts a week, from the episode's own assets. NEVER cross-posted to
-    # channel 1 (non-cannibalization rule, 90-day minimum).
-    - cron: "0 6 * * 4,6,0"
+    # DAILY at 23:00 UTC (= 7 PM Kitchener EDT / 6 PM EST) — each short is
+    # generated the EVENING BEFORE its publish day, so the nightly ritual is:
+    # review the release -> schedule the YouTube publish -> sleep.
+    # Volume is the discovery mechanism on a young channel: the Shorts feed
+    # is the only surface currently distributing this channel to strangers
+    # (53% of Shorts views), so cadence went 5/week -> 7/week on 2026-07-20.
+    # Publish times (Kitchener) -> lands in the Indian evening peak:
+    #   weekdays 8:00-9:00 AM  -> 5:30-6:30 PM IST
+    #   Sat/Sun  1:30 AM       -> 11:00 AM IST (schedule before bed)
+    - cron: "0 23 * * *"
   workflow_dispatch:
     inputs:
       topic:
@@ -35,7 +40,7 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: System dependencies
+      - name: System dependencies (incl. Devanagari fonts for Hindi text)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core fonts-noto-core
@@ -71,8 +76,6 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
           SARVAM_SPEAKER: ${{ secrets.SARVAM_SPEAKER }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           FORCED_TOPIC: ${{ github.event.inputs.topic }}
@@ -108,6 +111,8 @@ jobs:
           git config user.name "faceless-autopilot"
           git config user.email "actions@users.noreply.github.com"
           git add topics_done_shorts.txt assets_used.json
+          git add styles_used.txt styles_used_shorts.txt 2>/dev/null || true
+          git add calibration.json 2>/dev/null || true
           git commit -m "log short (${{ steps.pipeline.outputs.stamp }})" || echo "nothing to commit"
           git pull --rebase origin ${{ github.ref_name }} || true
           git push

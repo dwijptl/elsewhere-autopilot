@@ -18,23 +18,14 @@ const FALLBACK = {
   style: 'documentary',
   accent: '#FFB020',
   progressBar: true,
-  brandName: 'ELSEWHERE',
-  brandTagline: 'Field documentaries from a world that never was.',
+  brandName: 'BHARAT KE RAHASYA',
+  brandTagline: "भारत के अनसुलझे रहस्यों की पड़ताल",
   watermarkPath: null as string | null,
   watermarkOpacity: 0.08,
   outroSeconds: 4,
   captionY: 0.78,
-  title: 'Elsewhere',
+  title: 'Terra Incognita',
   thumbText: 'PREVIEW',
-  // ── the stress-test spine, carried through to the renderer ──────────
-  // The Verdict card and the Schematic both need episode-level data, not
-  // scene-level data: the verdict belongs to the CASE, and the schematic
-  // draws the whole system map at once (that is how the shared dependency
-  // becomes visible).
-  verdict: 'FAILED' as string,
-  verdictReason: '' as string,
-  settlement: {name: ''} as {name?: string; premise?: string},
-  systems: [] as {name: string; runs_at?: string; depends_on?: string}[],
   thumbAiPath: null as string | null,
   motionSeed: 'preview',
   cta: null as CtaEvent | null,
@@ -52,9 +43,7 @@ const FALLBACK = {
       n: 1,
       start: 0,
       title: 'Preview scene',
-      visualMode: 'ai_image',
-      verdictCard: false,
-      heroMotion: false,
+      visualMode: 'broll',
       kineticText: '',
       card: {} as {kicker?: string; headline?: string; body?: string},
       glass: {} as GlassData,
@@ -68,6 +57,15 @@ const FALLBACK = {
         markerWorld?: number[];
         markerRegion?: number[];
         label?: string;
+      },
+      compare: {} as {
+        value?: number; unit?: string; label?: string;
+        anchorLabel?: string; anchorValue?: number; anchorUnit?: string;
+      },
+      causal: {} as {headline?: string; steps?: string[]},
+      evidence: {} as {
+        kicker?: string; headline?: string; source?: string;
+        date?: string; confidence?: string;
       },
       motion: {
         statVariant: 'glass', kineticVariant: 'word-pop', cardVariant: 'definition',

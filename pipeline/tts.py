@@ -1,15 +1,11 @@
 """Stage 3 — voiceover.
 
-PRIMARY: ElevenLabs (api.elevenlabs.io) — the channel's English narrator.
-The voice comes from the ELEVENLABS_VOICE_ID secret.
+PRIMARY: Sarvam AI bulbul:v3 (api.sarvam.ai) — the channel's CLONED Hindi
+voice. The speaker comes from the SARVAM_SPEAKER secret (your cloned voice ID
+from dashboard.sarvam.ai; any preset name like "amit" also works).
 
-PICK THE VOICE ONCE AND NEVER CHANGE IT. On a channel whose entire promise is
-"a real documentary from a world that doesn't exist", the narrator IS the
-credibility. Changing voices at episode 12 costs more trust than any thumbnail
-buys back.
-
-FALLBACK: Kokoro-82M (Apache 2.0, runs free on the runner) with its English
-voices — an ElevenLabs outage or empty credits never kills a scheduled run.
+FALLBACK: Kokoro-82M (Apache 2.0, runs free on the runner) with its Hindi
+voices — a Sarvam outage or empty credits never kills a scheduled run.
 Set TTS_NO_FALLBACK=1 to fail hard instead (the Test Voice workflow does).
 
 PRONUNCIATION DICTIONARY: brand/pronunciations.yaml maps terms the voice
@@ -29,8 +25,6 @@ import requests
 import soundfile as sf
 
 SARVAM_URL = "https://api.sarvam.ai/text-to-speech"
-ELEVEN_URL = "https://api.elevenlabs.io/v1/text-to-speech"
-ELEVEN_CHAR_LIMIT = 2400   # chunk below the model limit; sentence-aligned
 SARVAM_CHAR_LIMIT = 1800   # API allows 2500 for bulbul:v3 — stay comfortably under
 MODEL_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
 MODEL_FILES = ["kokoro-v1.0.onnx", "voices-v1.0.bin"]
@@ -38,30 +32,18 @@ SAMPLE_RATE = 24000
 
 ENGINE_USED = "none"       # run.py reports this in the release notes
 _engines: set = set()
-_sarvam_chars = 0          # cost telemetry (retained: Sarvam still available)
-_eleven_chars = 0          # cost telemetry ($ estimate in usage_summary)
+_sarvam_chars = 0          # cost telemetry (₹ estimate in usage_summary)
 _kokoro = None
 FALLBACK_USED = False       # never silently present a fallback run as cloned voice
 
 # Per-scene voice direction: how a human narrator would deliver it.
 # pace_mul multiplies cfg tts.speed; pre = seconds of silence BEFORE the
 # scene (dramatic beat); temperature = bulbul:v3 expressiveness.
-# Channel 2 is a calmer instrument than channel 1. The ranges are tighter and
-# the "reveal" beat is longer: this narrator lands a verdict by slowing down and
-# leaving a hole in the audio, never by getting louder. "style" is ElevenLabs
-# expressiveness — kept low on purpose. Hype is the failure mode.
 DELIVERY = {
-    "hook":   {"pace_mul": 1.02, "temperature": 0.62, "pre": 0.0,
-               "style": 0.22, "stability": 0.40},
-    "calm":   {"pace_mul": 1.00, "temperature": 0.55, "pre": 0.0,
-               "style": 0.12, "stability": 0.46},
-    "reveal": {"pace_mul": 0.90, "temperature": 0.58, "pre": 0.9,
-               "style": 0.10, "stability": 0.52},
-    "urgent": {"pace_mul": 1.08, "temperature": 0.68, "pre": 0.0,
-               "style": 0.28, "stability": 0.38},
-    # the SURVIVED / ADAPTED / FAILED card. Flat, quiet, final.
-    "verdict": {"pace_mul": 0.86, "temperature": 0.45, "pre": 1.2,
-                "style": 0.04, "stability": 0.62},
+    "hook":   {"pace_mul": 1.06, "temperature": 0.72, "pre": 0.0},
+    "calm":   {"pace_mul": 1.00, "temperature": 0.55, "pre": 0.0},
+    "reveal": {"pace_mul": 0.88, "temperature": 0.62, "pre": 0.5},
+    "urgent": {"pace_mul": 1.12, "temperature": 0.75, "pre": 0.0},
 }
 
 _PRON: dict | None = None
@@ -117,17 +99,6 @@ def _chunks(text: str, limit: int = SARVAM_CHAR_LIMIT) -> list[str]:
 
 
 # ── Sarvam bulbul:v3 ─────────────────────────────────────────────────────
-def _sarvam_lang(code: str) -> str:
-    """Map channel language to a Sarvam-supported BCP-47 code.
-    Sarvam's enum only knows Indian-market codes: English is 'en-IN',
-    not 'en-us'/'en-US'. Anything already regionalised for India passes
-    through untouched."""
-    c = (code or "").strip()
-    if c.lower().startswith("en"):
-        return "en-IN"
-    return c or "hi-IN"
-
-
 def _sarvam_request(chunk: str, cfg: dict, api_key: str, speaker: str,
                     dlv: dict) -> np.ndarray:
     t = cfg["tts"]
@@ -135,7 +106,7 @@ def _sarvam_request(chunk: str, cfg: dict, api_key: str, speaker: str,
     pace = min(max(base, 0.5), 2.0)  # bulbul:v3 range
     body = {
         "text": chunk,
-        "target_language_code": _sarvam_lang(cfg["channel"].get("language", "hi-IN")),
+        "target_language_code": cfg["channel"].get("language", "hi-IN"),
         "model": t.get("sarvam_model", "bulbul:v3"),
         "speaker": speaker,
         "pace": round(pace, 3),
@@ -185,10 +156,8 @@ def _synth_sarvam(text: str, cfg: dict, dlv: dict) -> np.ndarray:
     api_key = os.environ.get("SARVAM_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("SARVAM_API_KEY not set (add it as a repo secret)")
-    # Sarvam speaker names are case-sensitive lowercase ('shubh', not 'Shubh')
-    # — normalise so a capitalised repo secret doesn't 422 every request.
     speaker = (os.environ.get("SARVAM_SPEAKER", "").strip()
-               or cfg["tts"].get("sarvam_speaker", "shubh")).lower()
+               or cfg["tts"].get("sarvam_speaker", "amit"))
     pieces = []
     for chunk in _chunks(text):
         pieces.append(_sarvam_request(chunk, cfg, api_key, speaker, dlv))
@@ -232,20 +201,17 @@ def _engine():
 
 def _kokoro_lang(cfg: dict) -> str:
     lang = str(cfg["channel"].get("language", "en-us")).lower()
-    if lang.startswith("hi"):
-        return "hi"
-    return "en-us" if lang.startswith("en") else lang
+    return "hi" if lang.startswith("hi") else lang
 
 
 def _synth_kokoro(text: str, cfg: dict) -> np.ndarray:
     k = _engine()
-    voice = cfg["tts"].get("voice", "am_michael")
+    voice = cfg["tts"].get("voice", "hm_omega")
     try:
         available = set(k.get_voices())
         if voice not in available:
-            english = sorted(v for v in available if v.startswith(("am_", "af_",
-                                                                  "bm_", "bf_")))
-            fallback = english[0] if english else sorted(available)[0]
+            hindi = sorted(v for v in available if v.startswith(("hf_", "hm_")))
+            fallback = hindi[0] if hindi else sorted(available)[0]
             print(f"[tts] voice '{voice}' not found, using '{fallback}'")
             voice = fallback
     except Exception:
@@ -264,69 +230,6 @@ def _synth_kokoro(text: str, cfg: dict) -> np.ndarray:
     return np.concatenate(chunks)
 
 
-# ── ElevenLabs (primary: the English narrator) ───────────────────────────
-def _eleven_request(chunk: str, cfg: dict, api_key: str, voice_id: str,
-                    dlv: dict) -> np.ndarray:
-    t = cfg["tts"]
-    body = {
-        "text": chunk,
-        "model_id": t.get("elevenlabs_model", "eleven_multilingual_v2"),
-        "voice_settings": {
-            "stability": float(dlv.get("stability", t.get("stability", 0.42))),
-            "similarity_boost": float(t.get("similarity", 0.80)),
-            "style": float(dlv.get("style", t.get("style", 0.15))),
-            "use_speaker_boost": bool(t.get("speaker_boost", True)),
-            "speed": float(t.get("speed", 1.0)) * float(dlv.get("pace_mul", 1.0)),
-        },
-    }
-    headers = {"xi-api-key": api_key, "accept": "audio/mpeg",
-               "content-type": "application/json"}
-    url = f"{ELEVEN_URL}/{voice_id}"
-    for attempt in range(4):
-        r = requests.post(url, json=body, headers=headers, timeout=180)
-        if r.status_code == 429:
-            wait = 15 * (attempt + 1)
-            print(f"[tts] elevenlabs rate-limited, sleeping {wait}s")
-            time.sleep(wait)
-            continue
-        if r.status_code == 401:
-            raise RuntimeError("ELEVENLABS_API_KEY rejected (401). Check the "
-                               "secret and the account's character balance.")
-        if r.status_code >= 400:
-            raise RuntimeError(f"elevenlabs {r.status_code}: {r.text[:300]}")
-        audio, sr = sf.read(io.BytesIO(r.content), dtype="float32")
-        if audio.ndim > 1:
-            audio = audio.mean(axis=1)
-        if sr != SAMPLE_RATE:
-            idx = np.linspace(0, len(audio) - 1,
-                              int(len(audio) * SAMPLE_RATE / sr))
-            audio = np.interp(idx, np.arange(len(audio)), audio).astype(np.float32)
-        return audio
-    raise RuntimeError("elevenlabs failed after retries")
-
-
-def _synth_eleven(text: str, cfg: dict, dlv: dict) -> np.ndarray:
-    global _eleven_chars
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("ELEVENLABS_API_KEY missing")
-    voice_id = (os.environ.get("ELEVENLABS_VOICE_ID", "").strip()
-                or cfg["tts"].get("elevenlabs_voice", "").strip())
-    if not voice_id:
-        raise RuntimeError(
-            "No ElevenLabs voice selected. Set the ELEVENLABS_VOICE_ID secret. "
-            "Pick the voice ONCE — it is the channel's face.")
-    pieces = []
-    for chunk in _chunks(text, ELEVEN_CHAR_LIMIT):
-        pieces.append(_eleven_request(chunk, cfg, api_key, voice_id, dlv))
-        _eleven_chars += len(chunk)
-    gap = np.zeros(int(0.18 * SAMPLE_RATE), dtype=np.float32)
-    out: list = []
-    for p in pieces:
-        out += [p, gap]
-    return np.concatenate(out) if out else np.zeros(SAMPLE_RATE, dtype=np.float32)
-
-
 # ── public API ───────────────────────────────────────────────────────────
 def synth_scene(text: str, wav_path: str, cfg: dict,
                 delivery: str = "calm", tail_seconds: float = 0.35) -> float:
@@ -335,19 +238,9 @@ def synth_scene(text: str, wav_path: str, cfg: dict,
     global ENGINE_USED, FALLBACK_USED
     text = _apply_pronunciations(text)
     dlv = DELIVERY.get(str(delivery).lower().strip(), DELIVERY["calm"])
-    engine = str(cfg.get("tts", {}).get("engine", "elevenlabs")).lower()
+    engine = str(cfg.get("tts", {}).get("engine", "sarvam")).lower()
     audio = None
-    if engine == "elevenlabs":
-        try:
-            audio = _synth_eleven(text, cfg, dlv)
-            _engines.add("elevenlabs:" +
-                         cfg["tts"].get("elevenlabs_model", "eleven_multilingual_v2"))
-        except Exception as e:
-            if os.environ.get("TTS_NO_FALLBACK", "").strip() == "1":
-                raise
-            FALLBACK_USED = True
-            print(f"[tts] ELEVENLABS FAILED -> Kokoro fallback. Reason: {e}")
-    elif engine == "sarvam":
+    if engine == "sarvam":
         try:
             audio = _synth_sarvam(text, cfg, dlv)
             _engines.add("sarvam:" + cfg["tts"].get("sarvam_model", "bulbul:v3"))
@@ -382,23 +275,16 @@ def fallback_used() -> bool:
 
 def reset_run_state() -> None:
     """Reset module telemetry when a process intentionally runs more than once."""
-    global ENGINE_USED, FALLBACK_USED, _sarvam_chars, _eleven_chars
+    global ENGINE_USED, FALLBACK_USED, _sarvam_chars
     ENGINE_USED = "none"
     FALLBACK_USED = False
     _sarvam_chars = 0
-    _eleven_chars = 0
     _engines.clear()
 
 
 def usage_summary() -> str:
-    if _eleven_chars <= 0 and _sarvam_chars <= 0:
-        return f"engines: {ENGINE_USED} · 0 paid characters ($0)"
-    parts = [f"engines: {ENGINE_USED}"]
-    if _eleven_chars:
-        # Creator tier ≈ $0.00018/char at 100k chars for $22 — the pilot budgets
-        # $0.50 of voice, which is ~2,700 characters. Check your plan.
-        dollars = _eleven_chars * 0.00018
-        parts.append(f"elevenlabs chars: {_eleven_chars:,} (≈ ${dollars:.2f})")
-    if _sarvam_chars:
-        parts.append(f"sarvam chars: {_sarvam_chars:,}")
-    return " · ".join(parts)
+    if _sarvam_chars <= 0:
+        return f"engines: {ENGINE_USED} · sarvam chars: 0 (₹0)"
+    rupees = _sarvam_chars / 10_000 * 30  # ₹30 / 10k chars (check dashboard)
+    return (f"engines: {ENGINE_USED} · sarvam chars: {_sarvam_chars:,} "
+            f"(≈ ₹{rupees:.1f})")

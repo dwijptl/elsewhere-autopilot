@@ -2,25 +2,18 @@ name: Make Video
 
 on:
   schedule:
-    # WEEKLY — Wednesday 04:00 UTC. One episode a week, and not one more until
-    # ten episodes hold retention (docs/CHANNEL2_PLAN.md §6). The world needs to
-    # be right more than it needs to be fast.
-    #
-    # Deliberately offset from Terra Incognita's Mon/Thu runs: channel 2 must
-    # never starve channel 1 of runner time or of Dwij's review attention.
-    #
-    # Review the render, then SCHEDULE the YouTube publish for 15:00-17:00 UTC
-    # (US morning + EU evening — this is an English channel now, the IST
-    # publishing logic from channel 1 does not apply).
-    - cron: "0 4 * * 3"
+    # Wednesday at 23:00 UTC (= 7 PM Kitchener EDT / 6 PM EST) — Thursday's
+    # video is ready the EVENING BEFORE, creator local time. Review the
+    # release, then SCHEDULE the YouTube publish for ~6:30 AM Kitchener
+    # = ~4:00-4:30 PM IST (Hindi long-form viewing peaks 6-9 PM IST).
+    # 1/week (was Sun+Wed): long-form is the watch-time and monetization
+    # base, but at this channel size discovery comes from Shorts, so the
+    # weekly slot keeps the back-catalogue growing without starving cadence.
+    - cron: "0 23 * * 3"
   workflow_dispatch:
     inputs:
       topic:
-        description: "Optional: force a specific case (leave empty for auto)"
-        required: false
-        default: ""
-      script_file:
-        description: "Optional: repo path to a hand-written script JSON (skips the LLM writer)"
+        description: "Optional: force a specific topic (leave empty for auto)"
         required: false
         default: ""
 
@@ -45,7 +38,7 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: System dependencies
+      - name: System dependencies (incl. Devanagari fonts for Hindi text)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core fonts-noto-core
@@ -71,14 +64,6 @@ jobs:
         working-directory: remotion
         run: npm install --no-audit --no-fund
 
-      # PRE-SPEND GATE. The renderer is the last stage but its bugs are the
-      # most expensive kind: TTS, FLUX and Wan money is already spent by the
-      # time a render crashes. A type error costs 30 seconds here or $3 there.
-      # (Learned on the first pilot run, 2026-07-13.)
-      - name: Typecheck renderer BEFORE spending money
-        working-directory: remotion
-        run: npx tsc --noEmit
-
       - name: Python dependencies
         run: pip install -r requirements.txt
 
@@ -89,12 +74,9 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
           SARVAM_SPEAKER: ${{ secrets.SARVAM_SPEAKER }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           FORCED_TOPIC: ${{ github.event.inputs.topic }}
-          SCRIPT_FILE: ${{ github.event.inputs.script_file }}
         run: python pipeline/run.py
 
       - name: Publish release (your dated "folder")
@@ -112,19 +94,16 @@ jobs:
             draft=(--draft)
             title="⚠️ REVIEW — $title"
           fi
-          # work.zip = every generated asset + props.json. Attaching it makes
-          # RE-EDITS FREE: rerender.yml re-renders from this zip with new
-          # renderer code and zero generation spend. Editing judgment is the
-          # constraint now — never pay twice for the same assets.
-          (cd "$OUTDIR" && zip -q -r work.zip work)
+          extra=()
+          [ -f "$OUTDIR/beats.json" ] && extra+=("$OUTDIR/beats.json")
           gh release create "video-$STAMP" \
-            "$OUTDIR/work.zip" \
             "$OUTDIR/final.mp4" \
             "$OUTDIR/captions.srt" \
             "$OUTDIR/thumbnail.jpg" \
             "$OUTDIR/script.json" \
             "$OUTDIR/run_summary.json" \
             "$OUTDIR/quality_report.json" \
+            "${extra[@]}" \
             --title "$title" \
             --notes-file "$OUTDIR/metadata.md" \
             "${draft[@]}"
@@ -135,6 +114,8 @@ jobs:
           git config user.name "faceless-autopilot"
           git config user.email "actions@users.noreply.github.com"
           git add topics_done.txt assets_used.json
+          git add styles_used.txt styles_used_shorts.txt 2>/dev/null || true
+          git add calibration.json analytics/beats 2>/dev/null || true
           git commit -m "log run (${{ steps.pipeline.outputs.stamp }})" || echo "nothing to commit"
           git pull --rebase origin ${{ github.ref_name }} || true
           git push

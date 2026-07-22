@@ -1,4 +1,4 @@
-"""Faceless Autopilot — SHORTS orchestrator (vertical 1080x1920, ~25s, Hindi).
+"""Faceless Autopilot — SHORTS orchestrator (vertical 1080x1920, 40-55s, Hindi).
 
 Same machinery as run.py, tuned for Shorts/Reels: portrait assets, micro-scene
 pacing, big centered captions, loop-friendly ending, no outro card. Shares the
@@ -20,21 +20,22 @@ sys.path.insert(0, os.path.dirname(__file__))
 import analytics as analytics_mod   # noqa: E402
 import align                         # noqa: E402
 import assets as assets_mod         # noqa: E402
+import calibration                  # noqa: E402
 import captions as captions_mod     # noqa: E402
-import canon as canon_mod           # noqa: E402
-import canon_check                  # noqa: E402
-import atlasgen                     # noqa: E402
+import factcheck                    # noqa: E402
+import mapgen                       # noqa: E402
 import motion as motion_mod         # noqa: E402
 import postprocess                  # noqa: E402
 import script_gen                   # noqa: E402
 import sfx as sfx_mod               # noqa: E402
 import tts as tts_mod               # noqa: E402
 import vision_qc                    # noqa: E402
-from run import _impact_start       # noqa: E402  (word-synced overlay timing)
+import visual_beats as visual_beats_mod  # noqa: E402
+from run import _impact_start, _visual_beat_manifest  # noqa: E402
+import style_packs                  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REMOTION_DIR = os.path.join(REPO_ROOT, "remotion")
-STYLES = ["kinetic", "documentary", "noir", "editorial"]  # shorts lean punchy
 DONE_FILE = os.path.join(REPO_ROOT, "topics_done_shorts.txt")
 
 
@@ -47,6 +48,9 @@ def probe_duration(path: str) -> float:
         return float(json.loads(out.stdout)["format"]["duration"])
     except Exception:
         return 4.0
+
+
+import run as run_mod  # noqa: E402  (shared India-targeting helpers)
 
 
 def short_cfg(cfg: dict) -> dict:
@@ -62,6 +66,19 @@ def short_cfg(cfg: dict) -> dict:
         "max_shot_seconds": s.get("max_shot_seconds", 3.5),
         "outro_seconds": 0,
     })
+    # semantic visual beats for shorts: imagery changes with the spoken idea
+    # (not just a 2.4s rotation timer). Beat count derives from channel.wpm,
+    # so pin it to the REAL short pace; ceilings match the portrait shot cap.
+    sv = s.get("visual_beats", {}) if isinstance(s.get("visual_beats"), dict) else {}
+    c["channel"]["wpm"] = int(s.get("wpm", 100))
+    c["longform_quality"] = {"visual_beats": {
+        "enabled": bool(sv.get("enabled", True)),
+        "hook_max_seconds": float(sv.get("hook_max_seconds", 1.6)),
+        "max_seconds": float(sv.get("max_seconds",
+                                    s.get("max_shot_seconds", 2.4))),
+        "min_per_scene": int(sv.get("min_per_scene", 1)),
+        "max_per_scene": int(sv.get("max_per_scene", 6)),
+    }}
     c["captions"]["max_chars"] = s.get("captions_max_chars", 14)
     c["music"]["volume"] = s.get("music_volume", 0.18)
     c["tts"]["speed"] = s.get("tts_speed", 1.0)
@@ -96,15 +113,7 @@ def main() -> None:
     workdir = os.path.join(outdir, "work")
     os.makedirs(workdir, exist_ok=True)
 
-    done_count = 0
-    try:
-        with open(DONE_FILE, encoding="utf-8") as f:
-            done_count = sum(1 for ln in f if ln.strip() and not ln.startswith("#"))
-    except Exception:
-        pass
-    style = STYLES[done_count % len(STYLES)]
-    cfg.setdefault("render", {})["style_pack"] = style  # steers AI-image look
-    print(f"=== Shorts run {stamp} · style: {style} ===")
+    print(f"=== Shorts run {stamp} ===")
 
     # 1) topic + short script ------------------------------------------------
     # Shorts are trailers: bias the topic toward the latest long-form episode
@@ -128,14 +137,34 @@ def main() -> None:
         pass
     topic = script_gen.pick_topic(cfg, gemini_key, DONE_FILE,
                                   (learnings or "") + trailer_hint)
-    script = script_gen.generate_short_script(cfg, topic, gemini_key, learnings)
-    fact_report = canon_check.check_script(script, cfg, gemini_key, REPO_ROOT)
+
+    # topic-driven style pack (mystery -> noir family, space -> cosmos...),
+    # rotating away from the last few Shorts. Replaces done_count % N.
+    style = style_packs.select_and_log(topic, "", REPO_ROOT, is_short=True)
+    cfg.setdefault("render", {})["style_pack"] = style  # steers AI-image look
+    print(f"[style] topic-driven pack: {style}")
+    style_packs.apply_pacing(cfg, style, is_short=True)
+    measured_wpm = calibration.measured_wpm(
+        REPO_ROOT, int(cfg.get("short", {}).get("wpm", 100)), kind="short")
+    if measured_wpm:
+        cfg.setdefault("short", {})["wpm"] = measured_wpm
+        cfg["channel"]["wpm"] = measured_wpm  # beat counts track real pace
+        print(f"[calib] short word budget uses measured pace: "
+              f"{measured_wpm} wpm")
+    script = script_gen.generate_short_script(
+        cfg, topic, gemini_key, learnings,
+        done=script_gen._done_titles(DONE_FILE))
+    # sentence-level visual beats — one free Gemini pass binds each spoken
+    # idea to a concrete visual (same system as long-form, portrait ceilings)
+    script = script_gen._plan_visual_beats(script, cfg, gemini_key)
+    fact_report = factcheck.check_script(script, cfg, gemini_key)
     with open(os.path.join(outdir, "script.json"), "w", encoding="utf-8") as f:
         json.dump(script, f, indent=2, ensure_ascii=False)
 
     # 2) voiceover -------------------------------------------------------------
     fps = int(cfg["video"]["fps"])
-    xfade = float(cfg["video"]["crossfade"])
+    jit = style_packs.render_jitter(script["title"] + ":short")
+    xfade = float(cfg["video"]["crossfade"]) * jit["xfade_mul"]
     scenes, offset = [], 0.0
     short_settings = cfg.get("short", {})
     final_index = len(script["scenes"]) - 1
@@ -153,6 +182,11 @@ def main() -> None:
     scenes[0]["start"] = 0.0
     print(f"[tts] {tts_mod.usage_summary()}")
     total_speech = scenes[-1]["start"] + scenes[-1]["audio_duration"]
+    calibration.record(
+        REPO_ROOT, "short",
+        sum(len(str(sc.get("narration", "")).split())
+            for sc in script["scenes"]),
+        sum(sc["audio_duration"] for sc in scenes), stamp)
     target_s = float(short_settings.get("target_seconds", 25))
     if total_speech > target_s * 1.25:
         print(f"[warn] short runs {total_speech:.1f}s vs {target_s:.0f}s target "
@@ -170,24 +204,28 @@ def main() -> None:
                       (f"mixed ({aligned_scenes}/{len(scenes)} scenes aligned)"
                        if aligned_scenes else "estimated (heuristic)"))
 
-    # 2b) atlas locator (portrait) — fail -> still
-    if cfg.get("atlas", {}).get("enabled", True):
+    # map each visual beat onto the measured narration timeline
+    for sc in scenes:
+        visual_beats_mod.time_scene(sc)
+
+    # 2b) map scenes (portrait) — fail -> b-roll
+    if cfg.get("maps", {}).get("enabled", True):
         for sc in scenes:
             if sc.get("visual_mode") == "map":
-                at = sc.get("atlas") or sc.get("map") or {}
-                region_id = str(at.get("region") or script.get("region") or "")
-                render = atlasgen.render_scene_maps(
-                    region_id, workdir, sc["n"], portrait=True,
-                    repo_root=REPO_ROOT)
+                mp = sc.get("map") or {}
+                render = None
+                if mp.get("lat") is not None and mp.get("lon") is not None:
+                    render = mapgen.render_scene_maps(
+                        mp["lat"], mp["lon"], workdir, sc["n"], portrait=True)
                 if render:
-                    render["label"] = str(at.get("label") or render.get("label", ""))[:40]
+                    render["label"] = str(mp.get("label", ""))[:40]
                     sc["map_render"] = render
                 else:
-                    sc["visual_mode"] = "ai_image"
+                    sc["visual_mode"] = "broll"
     else:
         for sc in scenes:
             if sc.get("visual_mode") == "map":
-                sc["visual_mode"] = "ai_image"
+                sc["visual_mode"] = "broll"
 
     # 3) portrait assets (shared never-repeat log) -----------------------------
     log_path = os.path.join(REPO_ROOT, "assets_used.json")
@@ -196,11 +234,12 @@ def main() -> None:
     used: set = set(usage_log["pexels"])
     used_prompts: set = set(usage_log["prompts"])
     ai_budget = [int(cfg["ai_images"].get("max_per_video", 1))]
+    rescue_budget = [int(cfg.get("short", {}).get("rescue_budget", 3))]
     for sc in scenes:
         sc["forbidden_visuals"] = script.get("forbidden_visuals") or []
         sc["assets"] = assets_mod.fetch_scene_assets(
             sc, sc["audio_duration"], workdir, cfg, pexels_key, gemini_key,
-            used, used_prompts, ai_budget)
+            used, used_prompts, ai_budget, rescue_budget=rescue_budget)
         for a in sc["assets"]:
             a["duration"] = probe_duration(a["path"]) if a["kind"] == "video" else None
     usage_log["pexels"] = sorted(used)
@@ -232,12 +271,16 @@ def main() -> None:
         music_rel = sfx_mod.build_ambient_bed(
             workdir, motion_seed, style, is_short=True)
 
-    motion_mod.decorate_scenes(scenes, motion_seed)
+    motion_mod.decorate_scenes(
+        scenes, motion_seed,
+        frame_pool=style_packs.frames_for(style),
+        lower_third_pool=style_packs.lower_thirds_for(style))
     cta_event = motion_mod.plan_cta(scenes, cfg, motion_seed, is_short=True)
     sfx_events = sfx_mod.plan_events(scenes, cfg, workdir, cta_event)
 
     # word-synced impact windows: the graphic enters on the spoken keyword
-    overlay_seconds = float(short_settings.get("overlay_seconds", 3.5))
+    overlay_seconds = (float(short_settings.get("overlay_seconds", 3.5))
+                       * jit["overlay_mul"])
     for sc in scenes:
         sc["impact_start"] = _impact_start(sc, overlay_seconds)
         if sc["impact_start"] > 0:
@@ -247,7 +290,8 @@ def main() -> None:
     manifest = {"manifest": {
         "fps": fps, "width": 1080, "height": 1920,
         "xfadeFrames": max(int(round(xfade * fps)), 1),
-        "maxShotSeconds": float(cfg["video"].get("max_shot_seconds", 2.4)),
+        "maxShotSeconds": float(cfg["video"].get("max_shot_seconds", 2.4))
+        * jit["max_shot_mul"],
         "overlaySeconds": overlay_seconds,
         "style": style,
         "accent": cfg["render"].get("accent", "#FFB020"),
@@ -255,9 +299,13 @@ def main() -> None:
         "brandName": brand_cfg.get("name", ""),
         "brandTagline": brand_cfg.get("tagline", ""),
         "watermarkPath": wm,
-        "watermarkOpacity": float(brand_cfg.get("watermark_opacity", 0.08)),
+        "watermarkOpacity": min(max(
+            float(brand_cfg.get("watermark_opacity", 0.08))
+            + jit["watermark_off"], 0.05), 0.14),
         "outroSeconds": 0,
-        "captionY": float(cfg.get("short", {}).get("caption_y", 0.62)),
+        "captionY": min(max(
+            float(cfg.get("short", {}).get("caption_y", 0.62))
+            + jit["caption_y_off"], 0.5), 0.72),
         "title": script["title"],
         "thumbText": script.get("thumb_text", ""),
         "motionSeed": motion_seed,
@@ -285,6 +333,7 @@ def main() -> None:
                 "path": os.path.basename(a["path"]), "kind": a["kind"],
                 "duration": round(a["duration"], 2) if a.get("duration") else None,
             } for a in sc["assets"]],
+            "visualBeats": _visual_beat_manifest(sc),
         } for sc in scenes],
     }}
     manifest_path = os.path.join(workdir, "props.json")
@@ -304,38 +353,47 @@ def main() -> None:
         raise RuntimeError("Remotion produced no/too-small output")
     postprocess.master_delivery(final_path, cfg)
     duration = probe_duration(final_path)
+    visual_report = vision_qc.audit_render(
+        final_path, cfg, gemini_key,
+        forbidden=script.get("forbidden_visuals") or [],
+        out_path=os.path.join(outdir, "visual_audit.json"))
+    visual_requires_review = not visual_report.get("publishable", True)
 
     # 7) metadata ---------------------------------------------------------------
     voice_line = tts_mod.ENGINE_USED or "unknown"
-    fact_line = canon_check.markdown(fact_report)
-    gate_mode = str(cfg.get("canon_check", {}).get("gate", False)).strip().lower()
+    fact_line = factcheck.markdown(fact_report)
+    gate_mode = str(cfg.get("factcheck", {}).get("gate", False)).strip().lower()
     if gate_mode in ("true", "1", "all"):
         fact_requires_review = fact_report.get("unsupported", 0) > 0
     elif gate_mode == "high_risk":
         fact_requires_review = bool(fact_report.get("high_risk_unsupported"))
     else:
         fact_requires_review = False
-    draft_release = voice_fallback or fact_requires_review
+    draft_release = (voice_fallback or fact_requires_review
+                     or visual_requires_review)
     status_voice = "⚠️ FALLBACK — DO NOT PUBLISH" if voice_fallback else "OK (cloned)"
     status_fact = (f"⚠️ REVIEW CLAIMS ({fact_report.get('unsupported', 0)} unsupported)"
                    if fact_requires_review else fact_report.get("status", "unknown"))
+    status_visual = ("⚠️ REVIEW VISUALS"
+                     if visual_requires_review else
+                     visual_report.get("status", "unknown"))
     voice_banner = ("> ⚠️ **VOICE FALLBACK — DO NOT PUBLISH.** This run used Kokoro, "
                     "not your cloned Sarvam voice. Re-run when Sarvam is available.\n\n"
                     if voice_fallback else "")
     meta = f"""## {script['title']}
 
-{voice_banner}**Reliability:** Voice: {status_voice} | Captions: {caption_status} | Fact-check: {status_fact}
+{voice_banner}**Reliability:** Voice: {status_voice} | Captions: {caption_status} | Fact-check: {status_fact} | Visuals: {status_visual}
 
 **SHORT** · {duration:.0f}s · {len(scenes)} scenes · style: {style} ·
 voice: {voice_line} · run {stamp}
 
 ### Description (paste into YouTube/Instagram)
 
-{script['description']}
+{run_mod.build_description(script, is_short=True)}
 
 ### Tags
 
-{', '.join(script.get('tags', []))}
+{', '.join(run_mod.get_short_tags(script.get('tags', [])))}
 
 ### Reliability report
 
@@ -358,7 +416,8 @@ voice: {voice_line} · run {stamp}
     with open(os.path.join(outdir, "run_summary.json"), "w", encoding="utf-8") as f:
         json.dump({"draft_release": draft_release, "voice_fallback": voice_fallback,
                    "voice": voice_line, "captions": caption_status,
-                   "canon_check": fact_report,
+                   "factcheck": fact_report,
+                   "visual_audit": visual_report,
                    "motion_library": {
                        "seed": motion_seed,
                        "cta": cta_event,
@@ -367,6 +426,7 @@ voice: {voice_line} · run {stamp}
                    }}, f, indent=2, ensure_ascii=False)
 
     script_gen.log_topic_done(topic, DONE_FILE)
+    style_packs.record_use(style, REPO_ROOT, is_short=True)
 
     gh_out = os.environ.get("GITHUB_OUTPUT")
     if gh_out:
