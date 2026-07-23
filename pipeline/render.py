@@ -17,11 +17,23 @@ FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    # macOS (Studio local runs) — system Devanagari fonts, tried after the
+    # Linux Noto paths; .ttc collections load fine (PIL/MoviePy use index 0)
+    "/System/Library/Fonts/Supplemental/KohinoorDevanagari.ttc",
+    "/System/Library/Fonts/KohinoorDevanagari.ttc",
+    "/System/Library/Fonts/Supplemental/DevanagariMN.ttc",
+    "/System/Library/Fonts/DevanagariMN.ttc",
+    "/Library/Fonts/Arial Unicode.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    # user-installed fallback (brew install --cask font-noto-sans-devanagari)
+    "~/Library/Fonts/NotoSansDevanagari-Bold.ttf",
+    "~/Library/Fonts/NotoSansDevanagari-Regular.ttf",
 ]
 
 
 def _font() -> str:
     for f in FONT_CANDIDATES:
+        f = os.path.expanduser(f)
         if os.path.exists(f):
             return f
     raise RuntimeError("No usable font found (install fonts-noto-core / fonts-dejavu-core)")
