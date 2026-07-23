@@ -284,6 +284,32 @@ def synth_scene(text: str, wav_path: str, cfg: dict,
     return len(audio) / SAMPLE_RATE
 
 
+def preflight(cfg: dict) -> str:
+    """One tiny Sarvam request BEFORE the word budget is set, so the budget
+    can use the pace of the voice that will actually speak (Kokoro runs
+    ~35% faster than Sarvam — guessing wrong made 16-min "22-min" videos).
+    Returns "sarvam" or "kokoro". On failure the circuit breaker opens
+    immediately so scenes don't waste retries on a dead API.
+    Cost when healthy: ~6 chars (~Rs 0.02)."""
+    global _sarvam_fail_streak, FALLBACK_USED
+    engine = str(cfg.get("tts", {}).get("engine", "sarvam")).lower()
+    if engine != "sarvam" or not os.environ.get("SARVAM_API_KEY", "").strip():
+        return "kokoro"
+    try:
+        _sarvam_request("नमस्ते।", cfg, os.environ["SARVAM_API_KEY"].strip(),
+                        os.environ.get("SARVAM_SPEAKER", "").strip()
+                        or cfg["tts"].get("sarvam_speaker", "amit"),
+                        DELIVERY["calm"])
+        print("[tts] preflight: sarvam OK — cloned voice expected")
+        return "sarvam"
+    except Exception as e:
+        _sarvam_fail_streak = SARVAM_BREAKER_LIMIT
+        FALLBACK_USED = True   # never present a Kokoro run as the cloned voice
+        print(f"[tts] preflight: sarvam DOWN ({e}) — breaker open, "
+              "planning the run at Kokoro pace")
+        return "kokoro"
+
+
 def fallback_used() -> bool:
     """Whether this run used a non-primary voice after a Sarvam failure."""
     return FALLBACK_USED

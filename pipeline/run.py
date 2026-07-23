@@ -762,13 +762,19 @@ def main() -> None:
     print(f"=== Bharat Ke Rahasya run {stamp} ===")
 
     # narration-pace calibration: word budgets use the MEASURED wpm of past
-    # runs (calibration.json) instead of the static channel.wpm guess
+    # runs (calibration.json) instead of the static channel.wpm guess.
+    # Preflight decides WHICH voice's pace to plan for — Kokoro speaks ~35%
+    # faster than Sarvam, and planning at the wrong pace made run #2 come
+    # out 16.2 min against a 22-min target.
+    engine_hint = tts_mod.preflight(cfg)
     measured_wpm = calibration.measured_wpm(
-        REPO_ROOT, int(cfg["channel"].get("wpm", 130)), kind="long")
+        REPO_ROOT, int(cfg["channel"].get("wpm", 130)), kind="long",
+        engine=engine_hint)
     if measured_wpm:
         cfg["channel"]["wpm_measured"] = measured_wpm
         print(f"[calib] word budget uses measured pace: {measured_wpm} wpm "
-              f"(configured: {cfg['channel'].get('wpm', 130)})")
+              f"(configured: {cfg['channel'].get('wpm', 130)}, "
+              f"planned voice: {engine_hint})")
 
     # 1) topic + script ------------------------------------------------------
     done_file = os.path.join(REPO_ROOT, "topics_done.txt")
@@ -884,8 +890,14 @@ def main() -> None:
     narration_words = sum(len(str(sc.get("narration", "")).split())
                           for sc in script["scenes"])
     narration_seconds = sum(sc["audio_duration"] for sc in scenes)
+    engines_spoken = tts_mod.ENGINE_USED or ""
+    engine_actual = ("mixed" if ("sarvam" in engines_spoken
+                                 and "kokoro" in engines_spoken)
+                     else "sarvam" if "sarvam" in engines_spoken
+                     else "kokoro")
     realized_wpm = calibration.record(REPO_ROOT, "long", narration_words,
-                                      narration_seconds, stamp)
+                                      narration_seconds, stamp,
+                                      engine=engine_actual)
     duration_tol = float(cfg.get("retention", {}).get("duration_tolerance",
                                                       0.10))
     runtime_ok = abs(total_speech - target_s) <= duration_tol * target_s
@@ -1099,6 +1111,18 @@ def main() -> None:
         import pickle
         with open(os.path.join(outdir, "checkpoint.pkl"), "wb") as f:
             pickle.dump(ck, f)
+        # repo-state files written DURING prepare (pace calibration, style
+        # rotation, asset no-repeat ledger) live in this runner's checkout —
+        # the finish job commits history from a DIFFERENT checkout, so they
+        # must ride the artifact or they're lost (long run #2 lost all 3,
+        # which is why 16-min videos kept happening and shots repeated)
+        state_dir = os.path.join(outdir, "repo_state")
+        os.makedirs(state_dir, exist_ok=True)
+        for fn in ("calibration.json", "assets_used.json",
+                   "styles_used.txt", "styles_used_shorts.txt"):
+            src = os.path.join(REPO_ROOT, fn)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(state_dir, fn))
         gh_out = os.environ.get("GITHUB_OUTPUT")
         if gh_out:
             with open(gh_out, "a", encoding="utf-8") as f:

@@ -103,3 +103,19 @@ quota buckets); hero shots kling 2.5-turbo primary + cap $1.20->$0.60;
 FLUX schnell primary (dev fallback); gemini-3-* names purged.
 Est. per-video spend now: FAL <= ~$0.6 hard-capped, Gemini free tier,
 Sarvam ~Rs 54/22-min when its TTS returns. Zero Anthropic.
+
+## 2026-07-23 (later) — Why 16 min instead of 22, fixed three ways
+Root cause chain: (1) segmented runs LOST all prepare-side repo state —
+calibration.json / styles_used.txt / assets_used.json are written on the
+prepare runner but the history commit runs on the finish runner (run #2's
+commit had only topics_done + beats). Now: prepare snapshots them into
+<outdir>/repo_state/ (rides the artifact), run_long_finish restores before
+finalize. (2) Pace was engine-blind: Kokoro ~177 wpm vs Sarvam ~130 — new
+tts.preflight() pings Sarvam once (~Rs 0.02) BEFORE the word budget, opens
+the breaker immediately if down, and calibration entries now carry engine
+so the budget plans at the pace of the voice that will actually speak.
+(3) CLAMP 0.25 -> 0.40 (177 is 36% over the configured 130; the old band
+made 22-min targets mathematically unreachable on Kokoro).
+calibration.json seeded with run #2's measured reality (2860w/971.5s =
+176.6 wpm, kokoro). Expected: next Kokoro run ~22 min; first Sarvam run
+may drift long once, then self-corrects.

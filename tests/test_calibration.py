@@ -23,7 +23,9 @@ def test_clamped_to_configured_band(tmp_path):
     calibration.record(root, "long", 1000, 240.0, "a")  # 250 wpm (absurd)
     calibration.record(root, "long", 1000, 240.0, "b")
     got = calibration.measured_wpm(root, 130, "long")
-    assert got == int(130 * 1.25)  # clamped, never trusted blindly
+    # CLAMP widened 0.25 -> 0.40 after long run #2: Kokoro's real pace
+    # (~177 wpm) sits 36% above configured, the old band froze budgets short
+    assert got == int(130 * 1.40)  # still clamped, never trusted blindly
 
 
 def test_bad_measurements_ignored(tmp_path):

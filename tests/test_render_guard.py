@@ -49,3 +49,19 @@ def test_sarvam_breaker_opens_after_consecutive_failures(monkeypatch):
     assert tts.fallback_used()
     tts.reset_run_state()
     assert tts._sarvam_fail_streak == 0
+
+
+# ── engine-aware pace calibration (16-min "22-min" video postmortem) ─────
+def test_calibration_prefers_matching_engine(tmp_path):
+    import calibration
+    calibration.record(str(tmp_path), "long", 1094, 496.0, "a", engine="mixed")
+    calibration.record(str(tmp_path), "long", 2860, 971.5, "b", engine="kokoro")
+    # planned voice kokoro -> its own single measurement (177), not the
+    # cross-engine median (154) that undershot run #2 by six minutes
+    assert calibration.measured_wpm(str(tmp_path), 130, "long",
+                                    engine="kokoro") == 177
+    # unknown-engine hint falls back to the all-entries median
+    assert calibration.measured_wpm(str(tmp_path), 130, "long",
+                                    engine="sarvam") == 154
+    # no hint (single-job legacy path) keeps the old behavior
+    assert calibration.measured_wpm(str(tmp_path), 130, "long") == 154

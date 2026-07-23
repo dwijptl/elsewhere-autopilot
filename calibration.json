@@ -4,6 +4,15 @@
     "kind": "long",
     "words": 1094,
     "seconds": 496.0,
-    "wpm": 132.3
+    "wpm": 132.3,
+    "engine": "mixed"
+  },
+  {
+    "stamp": "2026-07-23_0341",
+    "kind": "long",
+    "words": 2860,
+    "seconds": 971.5,
+    "wpm": 176.6,
+    "engine": "kokoro"
   }
 ]
