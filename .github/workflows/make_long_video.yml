@@ -70,7 +70,6 @@ jobs:
           SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
           SARVAM_SPEAKER: ${{ secrets.SARVAM_SPEAKER }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           FORCED_TOPIC: ${{ github.event.inputs.topic }}
           LONG_TARGET_MINUTES: ${{ github.event.inputs.minutes }}
           PIPELINE_STAGE: prepare

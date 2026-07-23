@@ -96,20 +96,19 @@ tts:
   fail_on_fallback: false  # true = fail workflow after preserving a draft for inspection
 
 llm:
-  provider: "auto"         # "auto" = Claude for scripts when ANTHROPIC_API_KEY
-                           # secret exists (crisper writing, ~₹4/script),
-                           # otherwise Gemini free tier. Claude failures
-                           # auto-fall back to Gemini.
-  anthropic_model: "claude-sonnet-4-6" # newest sonnet this key actually
-                                       # serves (claude-sonnet-5 404s on the
-                                       # generate endpoint — Test Script #2).
-                                       # If a name 404s, the pipeline asks the
-                                       # API what models YOUR key has and
-                                       # self-heals to the newest sonnet/haiku
+  provider: "gemini"       # OWNER DECISION 2026-07-23: Gemini free tier for
+                           # everything — Anthropic dropped to cut per-video
+                           # cost. Set back to "auto" (+ re-add the
+                           # ANTHROPIC_API_KEY env line in the workflows) if
+                           # you ever want Claude-written scripts again.
+  anthropic_model: "claude-sonnet-4-6"   # kept for provider:"auto" — unused now
   anthropic_fallback_models: ["claude-sonnet-4-5", "claude-haiku-4-5-20251001"]
   model: "gemini-2.5-flash"
-  # tried in order if the model above is retired/404s:
-  fallback_models: ["gemini-3-flash", "gemini-flash-latest", "gemini-2.0-flash"]
+  # tried in order if the model above 429s (free-tier quota) or 404s.
+  # gemini-3-flash REMOVED: it 404'd v1beta generateContent in long run #2
+  # and its error masked the real quota problem. flash-lite first — separate,
+  # larger free-tier bucket, plenty for QC/align/repair calls.
+  fallback_models: ["gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"]
   temperature: 0.9
 
 brand:
@@ -131,14 +130,16 @@ render:
 hero_shots:
   enabled: true            # live on the scheduled Make Video runs (fail-open:
                            # any hero failure ships the still; $ cap below)
-  model: "fal-ai/kling-video/v2.6/pro/image-to-video"
-  fallback_model: "fal-ai/kling-video/v2.5-turbo/pro/image-to-video"
+  # COST 2026-07-23: turbo is now PRIMARY (≈half the price of 2.6 pro,
+  # near-identical for 5s b-roll-style shots); 2.6 pro only if turbo fails.
+  model: "fal-ai/kling-video/v2.5-turbo/pro/image-to-video"
+  fallback_model: "fal-ai/kling-video/v2.6/pro/image-to-video"
   max_per_video: 2         # hook + reveal
   seconds: 5               # fits max_shot_seconds: 5 — no renderer change
   max_retries: 1           # ONE regenerate after QC reject, then keep the still
   audio: false             # sfx.py + mastering own the soundtrack
   in_shorts: false         # long-form only for now
-  max_usd_per_video: 1.20  # hard cost gate: 2 shots + 1 retry + margin
+  max_usd_per_video: 0.60  # hard cost gate, halved with the turbo switch
 
 thumbnail:
   ai_provider: "gemini"    # thumbnails use the FREE Gemini image tier —
@@ -147,9 +148,10 @@ thumbnail:
 ai_images:
   enabled: true            # AI-generated stills for scenes stock can't cover
   # FLUX via fal.ai — used automatically when the FAL_KEY secret is set.
-  # Signature-shot quality; ~$0.05/image (dev) — a video costs ~$0.20.
-  flux_model: "fal-ai/flux/dev"
-  flux_fallback: "fal-ai/flux/schnell"   # ~10x cheaper, slightly softer
+  # COST 2026-07-23: schnell primary (~10x cheaper than dev, slightly
+  # softer — fine under grade overlays + Ken Burns motion); dev on failure.
+  flux_model: "fal-ai/flux/schnell"
+  flux_fallback: "fal-ai/flux/dev"
   max_per_video_flux: 4    # richer AI visuals when FLUX is on
   # Gemini image API — free fallback (~500/day) when no FAL_KEY:
   max_per_video: 2
@@ -157,7 +159,8 @@ ai_images:
   # targeted spend exactly where the narration binding is weakest:
   rescue_budget: 6
   model: "gemini-2.5-flash-image"
-  fallback_models: ["gemini-3-flash-image", "gemini-2.0-flash-preview-image-generation"]
+  # gemini-3-flash-image removed — its text sibling 404'd in long run #2
+  fallback_models: ["gemini-2.0-flash-preview-image-generation"]
 
 short:                     # vertical Shorts/Reels (Make Short workflow, Tue/Thu/Sat)
   # ADAPTIVE length: the script decides inside this band — one crisp fact

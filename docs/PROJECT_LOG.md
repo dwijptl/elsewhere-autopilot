@@ -86,3 +86,20 @@ run) + chunk timeout 180s->60s; prepare timeout 150->240 min; [stage] t+Nm
 elapsed stamps in run.py. Regression test: tests/test_render_guard.py.
 NOTE: Sarvam has now failed in runs #9 and #1(long) — check credits/status
 at dashboard.sarvam.ai before the next run if the cloned voice matters.
+
+## 2026-07-23 — Long run #2: PIPELINE PROVED, then cost surgery
+Run #2 delivered end-to-end: 16.3-min segmented video (25 scenes, 4 chunks
+concat'd clean, renderer remotion-segmented) — the architecture works.
+Draft flags: Kokoro fallback again (NB: Sarvam STT/align worked 24/25, so
+the key is alive — bulbul TTS specifically failing); 5 render-audit shots;
+2 story violations; runtime 16.2/22 (Kokoro pace — calibration.json now
+carries this run's measured wpm, next budget auto-corrects); fact-check
+skipped: fallback model gemini-3-flash 404s on v1beta generateContent and
+masked what was likely free-tier quota exhaustion on 2.5-flash.
+OWNER DIRECTIVE — cost down: llm.provider now "gemini" (Anthropic dropped
+entirely, ANTHROPIC_API_KEY removed from all four workflows); Gemini chain
+2.5-flash -> 2.5-flash-lite -> 2.0-flash -> flash-latest (separate free
+quota buckets); hero shots kling 2.5-turbo primary + cap $1.20->$0.60;
+FLUX schnell primary (dev fallback); gemini-3-* names purged.
+Est. per-video spend now: FAL <= ~$0.6 hard-capped, Gemini free tier,
+Sarvam ~Rs 54/22-min when its TTS returns. Zero Anthropic.
