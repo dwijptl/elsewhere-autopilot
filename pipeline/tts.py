@@ -36,6 +36,14 @@ _sarvam_chars = 0          # cost telemetry (₹ estimate in usage_summary)
 _kokoro = None
 FALLBACK_USED = False       # never silently present a fallback run as cloned voice
 
+# Circuit breaker: when Sarvam fails this many scenes IN A ROW, stop trying
+# it for the rest of the run and go straight to Kokoro. Without this, a
+# slow-failing API (connect timeouts) burns retries-x-timeout on EVERY
+# scene — on a 25+ scene long-form run that alone can exceed the CI job
+# timeout (this killed Make Long Video run #1 at 2h30m with zero progress).
+SARVAM_BREAKER_LIMIT = 2
+_sarvam_fail_streak = 0
+
 # Per-scene voice direction: how a human narrator would deliver it.
 # pace_mul multiplies cfg tts.speed; pre = seconds of silence BEFORE the
 # scene (dramatic beat); temperature = bulbul:v3 expressiveness.
@@ -117,7 +125,9 @@ def _sarvam_request(chunk: str, cfg: dict, api_key: str, speaker: str,
     last = ""
     for attempt in range(4):
         try:
-            r = requests.post(SARVAM_URL, json=body, headers=headers, timeout=180)
+            # 60s is generous for one TTS chunk (healthy calls take 5-15s);
+            # 180s made slow failures cost ~13 min per chunk before fallback
+            r = requests.post(SARVAM_URL, json=body, headers=headers, timeout=60)
         except requests.RequestException as e:
             last = str(e)
             time.sleep(5 * (attempt + 1))
@@ -235,20 +245,26 @@ def synth_scene(text: str, wav_path: str, cfg: dict,
                 delivery: str = "calm", tail_seconds: float = 0.35) -> float:
     """Synthesize one scene's narration to wav_path. Returns duration (s).
     delivery: hook | calm | reveal | urgent (per-scene voice direction)."""
-    global ENGINE_USED, FALLBACK_USED
+    global ENGINE_USED, FALLBACK_USED, _sarvam_fail_streak
     text = _apply_pronunciations(text)
     dlv = DELIVERY.get(str(delivery).lower().strip(), DELIVERY["calm"])
     engine = str(cfg.get("tts", {}).get("engine", "sarvam")).lower()
     audio = None
-    if engine == "sarvam":
+    if engine == "sarvam" and _sarvam_fail_streak < SARVAM_BREAKER_LIMIT:
         try:
             audio = _synth_sarvam(text, cfg, dlv)
             _engines.add("sarvam:" + cfg["tts"].get("sarvam_model", "bulbul:v3"))
+            _sarvam_fail_streak = 0
         except Exception as e:
             if os.environ.get("TTS_NO_FALLBACK", "").strip() == "1":
                 raise
             FALLBACK_USED = True
+            _sarvam_fail_streak += 1
             print(f"[tts] SARVAM FAILED -> Kokoro fallback. Reason: {e}")
+            if _sarvam_fail_streak >= SARVAM_BREAKER_LIMIT:
+                print(f"[tts] sarvam breaker OPEN after "
+                      f"{_sarvam_fail_streak} consecutive scene failures — "
+                      "Kokoro for the rest of this run")
     if audio is None:
         kcfg = dict(cfg)
         kcfg["tts"] = dict(cfg["tts"])
@@ -275,10 +291,11 @@ def fallback_used() -> bool:
 
 def reset_run_state() -> None:
     """Reset module telemetry when a process intentionally runs more than once."""
-    global ENGINE_USED, FALLBACK_USED, _sarvam_chars
+    global ENGINE_USED, FALLBACK_USED, _sarvam_chars, _sarvam_fail_streak
     ENGINE_USED = "none"
     FALLBACK_USED = False
     _sarvam_chars = 0
+    _sarvam_fail_streak = 0
     _engines.clear()
 
 

@@ -21,6 +21,9 @@ on:
         required: false
         default: ""
 
+env:
+  PYTHONUNBUFFERED: "1"  # keep logs live; buffered output is lost if the job dies
+
 permissions:
   contents: write
 

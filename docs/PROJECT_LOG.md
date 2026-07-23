@@ -73,3 +73,16 @@ runtime, and runtime grows only with infra.
 - New manifest fields: `(x as any)` casts in TSX.
 - Respect + three-register rules in scripts are non-negotiable — they are
   the channel's policy shield and its brand.
+
+## 2026-07-23 — Make Long Video run #1 postmortem
+Run #1 (सोन भंडार, 22 min) died: prepare hit its 150-min timeout with ZERO
+log output. Two stacked causes: (1) stdout was block-buffered, so the killed
+job lost every progress line — undiagnosable from CI; (2) Sarvam TTS failing
+slowly — synth_scene retried it fresh per scene (4 attempts x 180s timeout
+per chunk), so ~30 scenes could burn 4-6h before Kokoro fallback.
+Fixes shipped: PYTHONUNBUFFERED=1 in all three video workflows; Sarvam
+circuit breaker (2 consecutive scene failures -> Kokoro for the rest of the
+run) + chunk timeout 180s->60s; prepare timeout 150->240 min; [stage] t+Nm
+elapsed stamps in run.py. Regression test: tests/test_render_guard.py.
+NOTE: Sarvam has now failed in runs #9 and #1(long) — check credits/status
+at dashboard.sarvam.ai before the next run if the cloned voice matters.

@@ -780,9 +780,15 @@ def main() -> None:
           f"(recent: {style_packs.recent_styles(style_packs.history_path(REPO_ROOT))})")
     style_packs.apply_pacing(cfg, style, is_short=False)
 
+    def _stage(name: str) -> None:
+        # elapsed-minute stamps: with PYTHONUNBUFFERED these show live in CI,
+        # so a slow/killed run reveals WHERE the time went (run #1 didn't)
+        print(f"[stage] {name} (t+{(time.time() - t0) / 60:.0f}m)")
+
     # research BEFORE writing: the grounded dossier is the script's only
     # source of facts (no-skipping rule) — depth bounded by research, not
     # by one generation pass. Fail-open: {} keeps the old behavior.
+    _stage("research")
     dossier = research_mod.build_dossier(topic, cfg, gemini_key)
     if dossier:
         with open(os.path.join(outdir, "research.json"), "w",
@@ -790,6 +796,7 @@ def main() -> None:
             json.dump(dossier, f, indent=2, ensure_ascii=False)
 
     # shipped topics drive title-form / skeleton / topic-family rotation
+    _stage("script")
     done_titles = script_gen._done_titles(done_file)
     script = script_gen.generate_script(cfg, topic, gemini_key, learnings,
                                         done=done_titles, dossier=dossier)
@@ -816,6 +823,7 @@ def main() -> None:
             f"word budget ok={word_budget.get('ok')}) — stopped before TTS. "
             "See retention_report.json; lower the gate to 'draft' to render "
             "anyway.")
+    _stage("factcheck")
     fact_report = factcheck.check_script(script, cfg, gemini_key)
     with open(os.path.join(outdir, "claims.json"), "w", encoding="utf-8") as f:
         json.dump(fact_report, f, indent=2, ensure_ascii=False)  # claim ledger
@@ -848,6 +856,7 @@ def main() -> None:
             print(f"[hero] pose set generated: {sorted(hero_poses)}")
 
     # 2) voiceover -----------------------------------------------------------
+    _stage("voice")
     fps = int(cfg["video"]["fps"])
     jit = style_packs.render_jitter(script["title"])
     xfade = float(cfg["video"].get("crossfade", 0.4)) * jit["xfade_mul"]
@@ -901,6 +910,7 @@ def main() -> None:
         visual_beats_mod.time_scene(sc)
 
     # 2b) map scenes — render branded world/region maps (fail -> b-roll)
+    _stage("assets")
     if cfg.get("maps", {}).get("enabled", True):
         for sc in scenes:
             if sc.get("visual_mode") == "map":

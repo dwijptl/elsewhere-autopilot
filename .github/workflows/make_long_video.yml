@@ -23,6 +23,12 @@ on:
 permissions:
   contents: write
 
+# Unbuffered Python: without this, a canceled/killed job loses everything
+# still sitting in the stdout block buffer — run #1 died at the timeout with
+# ZERO visible log lines, making the failure undiagnosable from CI.
+env:
+  PYTHONUNBUFFERED: "1"
+
 concurrency:
   group: make-long-video
   cancel-in-progress: false
@@ -30,7 +36,10 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    # 240, not 150: a healthy 25-33 scene prepare (research, script repair
+    # passes, TTS, AI assets + vision QC) can legitimately pass 2h; run #1
+    # proved 150 too tight to even diagnose. Still far under the 6h cap.
+    timeout-minutes: 240
     outputs:
       stamp: ${{ steps.pipeline.outputs.stamp }}
       dir: ${{ steps.pipeline.outputs.dir }}

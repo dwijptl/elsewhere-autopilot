@@ -24,3 +24,28 @@ def test_missing_and_corrupt_assets_are_dropped_and_borrowed(tmp_path):
     assert scenes[0]["visual_beats"][0]["assets"] == []
     assert scenes[1]["assets"] == [{"path": str(good), "kind": "video"}]  # borrowed
     assert scenes[2]["assets"] == []  # map scenes may be empty
+
+
+# ── Sarvam circuit breaker (Make Long Video run #1 postmortem) ───────────
+def test_sarvam_breaker_opens_after_consecutive_failures(monkeypatch):
+    import numpy as np
+    import tts
+
+    tts.reset_run_state()
+    calls = {"sarvam": 0}
+
+    def dead_sarvam(text, cfg, dlv):
+        calls["sarvam"] += 1
+        raise RuntimeError("simulated slow-failing API")
+
+    monkeypatch.setattr(tts, "_synth_sarvam", dead_sarvam)
+    monkeypatch.setattr(tts, "_synth_kokoro",
+                        lambda text, cfg: np.zeros(2400, dtype=np.float32))
+    cfg = {"tts": {"engine": "sarvam"}, "video": {}}
+    for i in range(4):
+        tts.synth_scene("नमस्ते", f"/tmp/breaker_{i}.wav", cfg)
+    # scenes 1+2 try Sarvam and fail; breaker opens; scenes 3+4 skip it
+    assert calls["sarvam"] == tts.SARVAM_BREAKER_LIMIT
+    assert tts.fallback_used()
+    tts.reset_run_state()
+    assert tts._sarvam_fail_streak == 0
