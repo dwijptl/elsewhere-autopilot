@@ -706,6 +706,9 @@ Remotion. Brand: BHARAT KE RAHASYA (रहस्यलोक).*
                     f"title={safe_title}\nvoice_fallback={str(voice_fallback).lower()}\n"
                     f"draft_release={str(draft_release).lower()}\n")
 
+    # t0 comes from the checkpoint; older checkpoints lack it (long run #2
+    # died with NameError on this very line, AFTER the release published)
+    t0 = ck.get("t0") or time.time()
     print(f"=== Done in {(time.time() - t0) / 60:.1f} min -> {final_path} "
           f"({duration / 60:.1f} min, style={style}, engine={used_engine}) ===")
     if voice_fallback and cfg.get("tts", {}).get("fail_on_fallback", False):
@@ -1087,7 +1090,8 @@ def main() -> None:
           "used_engine": None, "motion_seed": motion_seed,
           "cta_event": cta_event, "sfx_events": sfx_events,
           "caption_status": caption_status,
-          "voice_line": tts_mod.ENGINE_USED or "unknown"}
+          "voice_line": tts_mod.ENGINE_USED or "unknown",
+          "t0": t0}
 
     if os.environ.get("PIPELINE_STAGE", "").strip() == "prepare":
         # segmented long-form: stop before pixels — render happens in
