@@ -152,10 +152,12 @@ def _sarvam_request(chunk: str, cfg: dict, api_key: str, speaker: str,
             raise RuntimeError(
                 "Sarvam 403 — check the SARVAM_API_KEY secret and remaining "
                 f"credits at dashboard.sarvam.ai. Body: {r.text[:300]}")
-        if r.status_code == 422:
+        if r.status_code in (400, 422):
+            # validation errors never heal with retries — fail fast with the
+            # server's own explanation (it lists the valid speakers)
             raise RuntimeError(
-                "Sarvam 422 — invalid request; usually SARVAM_SPEAKER doesn't "
-                f"match bulbul:v3. Body: {r.text[:300]}")
+                f"Sarvam {r.status_code} — invalid request; usually "
+                f"SARVAM_SPEAKER doesn't match bulbul:v3. Body: {r.text[:300]}")
         last = f"HTTP {r.status_code}: {r.text[:300]}"
         time.sleep(5 * (attempt + 1))
     raise RuntimeError(f"Sarvam TTS failed after retries — {last}")
@@ -166,8 +168,10 @@ def _synth_sarvam(text: str, cfg: dict, dlv: dict) -> np.ndarray:
     api_key = os.environ.get("SARVAM_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("SARVAM_API_KEY not set (add it as a repo secret)")
+    # lowercase ALWAYS: Sarvam's speaker list is lowercase-only and a
+    # capital-S "Shubh" secret 400'd every TTS call for three runs straight
     speaker = (os.environ.get("SARVAM_SPEAKER", "").strip()
-               or cfg["tts"].get("sarvam_speaker", "amit"))
+               or cfg["tts"].get("sarvam_speaker", "amit")).lower()
     pieces = []
     for chunk in _chunks(text):
         pieces.append(_sarvam_request(chunk, cfg, api_key, speaker, dlv))
