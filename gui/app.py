@@ -20,6 +20,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 
@@ -164,7 +165,7 @@ def _start_local(channel_key: str, topic: str, minutes: str) -> tuple[bool, str]
         stamp = time.strftime("%Y-%m-%d_%H%M")
         log_path = os.path.join(_log_dir(ch["path"]), f"run_{stamp}.log")
         log_f = open(log_path, "w", encoding="utf-8")
-        cmd = ["python3", "pipeline/run.py"]
+        cmd = [sys.executable, "pipeline/run.py"]  # same venv as the app
         if shutil.which("caffeinate"):  # macOS: don't sleep mid-render
             cmd = ["caffeinate", "-i"] + cmd
         proc = subprocess.Popen(

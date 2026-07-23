@@ -3,25 +3,24 @@
 A local control room for both channels (रहस्यलोक + Terra Incognita).
 Runs entirely on your Mac; nothing is hosted anywhere.
 
-## First time (5 minutes)
+## First time — ONE command
+
+Open Terminal on the Mac and paste:
 
 ```bash
-git clone https://github.com/dwijptl/elsewhere-autopilot.git
-cd elsewhere-autopilot
-bash gui/setup_mac.sh        # brew deps + python deps + remotion
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/dwijptl/elsewhere-autopilot/main/gui/install_mac.sh)"
 ```
 
-Optional, for the Terra Incognita tab:
+It installs Homebrew tools (ffmpeg, node, python 3.11), clones BOTH channel
+repos into `~/rahasyalok/`, sets up a python env + the Remotion renderer,
+and launches the Studio. First run takes a few minutes (npm downloads its
+headless Chrome once).
 
-```bash
-cd .. && git clone https://github.com/dwijptl/faceless-autopilot.git
-cd faceless-autopilot && pip3 install -r requirements.txt && (cd remotion && npm install)
-```
+## Every time after
 
-## Every time
-
-Double-click **start-gui.command** (or `python3 gui/app.py`) → the dashboard
-opens at http://127.0.0.1:8765.
+Double-click **~/rahasyalok/elsewhere-autopilot/start-gui.command** → the
+dashboard opens at http://127.0.0.1:8765. (Re-running the install one-liner
+is also fine — it just updates the repos and relaunches.)
 
 ## What it does
 
